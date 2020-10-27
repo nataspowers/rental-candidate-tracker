@@ -1,11 +1,12 @@
 import googlemaps
 import os
+import json
 from datetime import datetime
 
 from util import get_distance, get_next_weekday
 
-friend_geo = os.environ['friend'].split(",")
-work_geo = os.environ['work'].split(",")
+friend_geo = tuple(os.environ['friend'].split(","))
+work_geo = tuple(os.environ['work'].split(","))
 
 gmaps = googlemaps.Client(key=os.environ['gmap_key'])
 
@@ -19,10 +20,10 @@ def get_drive_time_friend(start):
     weekend = get_next_weekday(now.strftime("%Y-%m-%d"), 5) + " 14:00:00"
     weekend = datetime.strptime(weekend, '%Y-%m-%d %H:%M:%S')
     distance = gmaps.distance_matrix(origins=start,
-                        destinations=friend_geo,
-                        mode="driving",
-                        units="imperial",
-                        departure_time=weekend)
+                                    destinations=friend_geo,
+                                    mode="driving",
+                                    units="imperial",
+                                    departure_time=weekend)
     return distance
 
 def get_commute_transit(start):
@@ -32,11 +33,11 @@ def get_commute_transit(start):
     monday_morning = get_next_weekday(now.strftime("%Y-%m-%d"), 0) + " 08:00:00"
     monday_morning = datetime.strptime(monday_morning, '%Y-%m-%d %H:%M:%S')
     distance = gmaps.distance_matrix(origins=start,
-                        destinations=work_geo,
-                        mode="transit",
-                        units="imperial",
-                        transit_routing_preference="fewer_transfers",
-                        arrival_time=monday_morning)
+                                    destinations=work_geo,
+                                    mode="transit",
+                                    units="imperial",
+                                    transit_routing_preference="fewer_transfers",
+                                    arrival_time=monday_morning)
     return distance
 
 def get_commute_drive(start):

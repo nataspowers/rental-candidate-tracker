@@ -8,6 +8,9 @@ from util import get_distance
 gmaps = googlemaps.Client(key=os.environ['gmap_key'])
 yelp_url = os.environ['yelp_url']
 yelp_header = {'Authorization': 'Bearer %s' % os.environ['yelp_api_key']}
+dinner_categories = os.environ['dinner_categories'].split(",")
+lunch_categories = os.environ['lunch_categories'].split(",")
+brunch_categories = os.environ['brunch_categories'].split(",")
 
 def get_coffee_shops(start):
     params = {'latitude':start[0],
@@ -18,18 +21,25 @@ def get_coffee_shops(start):
     }
     req = requests.get(url=yelp_url, params=params, headers=yelp_header)
     coffee_shops = json.loads(req.text)
-    #print(json.dumps(coffee_shops, indent=2))
+   #print(json.dumps(coffee_shops, indent=2))
     results = filter_places('yelp',coffee_shops, start, 3.5)
     return results
 
 def get_restaurants(start):
-    restauraunts = gmaps.places(query="dinner",
-                                location=start,
-                                radius="1610",
-                                type="restaurant")
-    #print(json.dumps(restauraunts, indent=2))
-    results = filter_places('google',restauraunts, start, 3.5)
-    return results
+    catagories = ','.join(str(s) for s in (dinner_categories + lunch_categories + brunch_categories))
+    params = {'latitude':start[0],
+              'longitude':start[1],
+              'radius':805,
+              'categories':'waffles,french',
+              'sort_by':'distance'
+    }
+
+    req = requests.get(url=yelp_url, params=params, headers=yelp_header)
+    print('Restaurant request {}'.format(req.url))
+    restauraunts = json.loads(req.text)
+    print(json.dumps(restauraunts, indent=2))
+    #results = filter_places('yelp',restauraunts, start, 3.5)
+    #return results
 
 def get_convenience_store(start):
     params = {'latitude':start[0],

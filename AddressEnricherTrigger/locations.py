@@ -6,11 +6,15 @@ import os
 from util import get_distance
 
 gmaps = googlemaps.Client(key=os.environ['gmap_key'])
+
 yelp_url = os.environ['yelp_url']
 yelp_header = {'Authorization': 'Bearer %s' % os.environ['yelp_api_key']}
 dinner_categories = os.environ['dinner_categories'].split(",")
 lunch_categories = os.environ['lunch_categories'].split(",")
 brunch_categories = os.environ['brunch_categories'].split(",")
+
+mapquest_key = os.environ['mapquest_key']
+mapquest_url = os.environ['mapquest_url']
 
 def get_coffee_shops(start):
     params = {'latitude':start[0],
@@ -30,16 +34,16 @@ def get_restaurants(start):
     params = {'latitude':start[0],
               'longitude':start[1],
               'radius':805,
-              'categories':'waffles,french',
+              'categories':catagories,
               'sort_by':'distance'
     }
 
     req = requests.get(url=yelp_url, params=params, headers=yelp_header)
-    print('Restaurant request {}'.format(req.url))
+    #print('Restaurant request {}'.format(req.url))
     restauraunts = json.loads(req.text)
-    print(json.dumps(restauraunts, indent=2))
-    #results = filter_places('yelp',restauraunts, start, 3.5)
-    #return results
+    #print(json.dumps(restauraunts, indent=2))
+    results = filter_places('yelp',restauraunts, start, 3.5)
+    return results
 
 def get_convenience_store(start):
     params = {'latitude':start[0],
@@ -92,5 +96,20 @@ def filter_places(api,places,start,min_rating):
     return {'highest_rated':{'place':highest_rated,'value':highest_rated['rating']},
             'closest':{'place':closest,'value':closest_dist}}
 
-def geocode(address):
-    return gmaps.geocode(address=address)
+def geocode(address, api):
+    if api == 'mapquest':
+        params = {  'key':mapquest_key,
+                    'location':address
+                 }
+        req = requests.get(url=mapquest_url, params=params)
+        location = json.loads(req.text)
+        print('Location {}'.format(json.dumps(location, indent=2)))
+        geo = ( location['results'][0]['locations'][0]['latLng']['lat'],
+                location['results'][0]['locations'][0]['latLng']['lng'])
+        return {'formatted_address':'', 'geo' : geo}
+    else:
+        address_detail = gmaps.geocode(address=address)
+        formatted_address = address_detail[0]['formatted_address']
+        geo = address_detail[0]['geometry']['location']
+        geo = (geo['lat'],geo['lng'])
+        return {'formatted_address':formatted_address, 'geo' : geo}

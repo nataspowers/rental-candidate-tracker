@@ -36,11 +36,10 @@ def lambda_handler(event, context):
     #print('Commute Drive {}'.format(json.dumps(drive_commute, indent=2)))
 
     for address in sources:
-        address_detail = geocode(address=address)
+        address_detail = geocode(address=address, api="google")
         #print(json.dumps(address_detail, indent=2))
-        formatted_address = address_detail[0]['formatted_address']
-        geo = address_detail[0]['geometry']['location']
-        geo = (geo['lat'],geo['lng'])
+        formatted_address = address_detail['formatted_address']
+        geo = address_detail['geo']
 
         #scores = get_walk_score(geo, formatted_address)
         #print('Scores {}'.format(json.dumps(scores, indent=2)))
@@ -52,7 +51,7 @@ def lambda_handler(event, context):
         #print('Coffee {}'.format(json.dumps(coffee, indent=2)))
 
         restaurant = get_restaurants(geo)
-        #print('Restaurants {}'.format(json.dumps(restaurant, indent=2)))
+        print('Restaurants {}'.format(json.dumps(restaurant, indent=2)))
 
         #stores = get_convenience_store(geo)
         #print('Convenience Stores {}'.format(json.dumps(stores, indent=2)))

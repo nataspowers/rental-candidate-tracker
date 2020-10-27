@@ -2,6 +2,7 @@ import os
 import requests
 import json
 from datetime import datetime, timedelta
+from locations import geocode
 from util import get_distance
 
 soda_app_token = os.environ['soda_app_token']
@@ -12,8 +13,7 @@ soda_header = {'Accept':'application/json','X-App-Token':soda_app_token}
 non_violent_crimes = os.environ['non_violent_crimes'].split(";")
 violent_crimes = os.environ['violent_crimes'].split(";")
 police_beats = os.environ['oakland_police_beats'].split(",")
-mapquest_key = os.environ['mapquest_key']
-mapquest_url = os.environ['mapquest_url']
+
 
 now = datetime.now()
 
@@ -65,14 +65,7 @@ def grade_crime_distance(coord_1,coord_2,address):
     if coord_2:
         distance = get_distance(coord_1,coord_2)
     else:
-        params = {'key':mapquest_key,
-                  'location':address
-                 }
-        req = requests.get(url=mapquest_url, params=params)
-        location = json.loads(req.text)
-        #print('Crime Location {}'.format(json.dumps(location, indent=2)))
-        geo = ( location['results'][0]['locations'][0]['latLng']['lat'],
-                location['results'][0]['locations'][0]['latLng']['lng'])
+        geo = geocode(address=coord_2, api="mapquest")['geo']
         distance = get_distance(coord_1, geo)
 
     if distance < 0.25: # roughly 5 city blocks

@@ -19,11 +19,11 @@ def lambda_handler(event, context):
         address = None
         #print("DynamoDB Record: " + json.dumps(record['dynamodb'], indent=2))
         if record['eventName'] == 'INSERT':
-            address = record['dynamodb']['Keys']['Id']['N']
+            address = record['dynamodb']['Keys']['Address']['S']
 
         if record['eventName'] == 'MODIFY':
-            if not 'dist_m_r' in record['dynamodb']['NewImage']:
-                address = record['dynamodb']['NewImage']['Id']['N']
+            if not 'friend_drive' in record['dynamodb']['NewImage']:
+                address = record['dynamodb']['NewImage']['Address']['S']
 
         if address != None:
             sources.append(address)

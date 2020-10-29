@@ -58,6 +58,17 @@ def get_convenience_store(start):
     results = filter_places('yelp', stores, start, 3.0)
     return results
 
+def get_bart(start):
+
+    bart = gmaps.places(query='bart',
+                    location=start,
+                    radius=5000,
+                    type='transit_station')
+
+    results = filter_places('google', bart, start, 0.0)
+    print(json.dumps(results, indent=2))
+    return results['closest']
+
 def filter_places(api,places,start,min_rating):
     highest_rated = {}
     closest = {}

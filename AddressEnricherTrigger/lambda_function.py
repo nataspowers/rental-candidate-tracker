@@ -36,9 +36,9 @@ def lambda_handler(event, context):
     #drive_commute = get_commute_drive(sources)
     #print('Commute Drive {}'.format(json.dumps(drive_commute, indent=2)))
 
-    airport_transit_commute = get_airport_commute_transit(sources)
+    #airport_transit_commute = get_airport_commute_transit(sources)
     #print('Airport Commute Transit {}'.format(json.dumps(airport_transit_commute, indent=2)))
-    airport_drive_commute = get_airport_commute_drive(sources)
+    #airport_drive_commute = get_airport_commute_drive(sources)
     #print('Airport Commute Drive {}'.format(json.dumps(airport_drive_commute, indent=2)))
 
 
@@ -46,7 +46,7 @@ def lambda_handler(event, context):
         address_detail = geocode(address=address, api="google")
         #print(json.dumps(address_detail, indent=2))
         formatted_address = address_detail['formatted_address']
-        #geo = address_detail['geo']
+        geo = address_detail['geo']
 
         #scores = get_walk_score(geo, formatted_address)
         #print('Scores {}'.format(json.dumps(scores, indent=2)))
@@ -75,9 +75,9 @@ def lambda_handler(event, context):
 
         #commute = {'transit' : fetch_drive_time(formatted_address, transit_commute)[0],
         #            'drive' : fetch_drive_time(formatted_address, drive_commute)[0]}
-        airports = {'transit' : get_airport_commute(formatted_address, airport_transit_commute),
-                    'drive' : get_airport_commute(formatted_address, airport_drive_commute)}
-        print('Airport Commute {}'.format(json.dumps(airports, indent=2)))
+        #airports = {'transit' : get_airport_commute(formatted_address, airport_transit_commute),
+        #            'drive' : get_airport_commute(formatted_address, airport_drive_commute)}
+        #print('Airport Commute {}'.format(json.dumps(airports, indent=2)))
         #places = {'coffee' : coffee, 'restaurant' : restaurant,
         #            'convenience_store':stores, 'bart':bart}
 

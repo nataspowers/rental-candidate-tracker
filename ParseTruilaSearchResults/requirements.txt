@@ -1,0 +1,5 @@
+boto3==1.16.12
+python-dateutil==2.8.1
+requests==2.24.0
+scraperapi-sdk
+Scrapy==2.4.0

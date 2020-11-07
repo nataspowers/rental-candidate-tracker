@@ -10,7 +10,7 @@ import boto3
 print('Loading function')
 
 dynamodb = boto3.resource('dynamodb')
-table = dynamodb.Table('candidates')
+table = dynamodb.Table('Candidates')
 
 def lambda_handler(event, context):
     #print("Received event: " + json.dumps(event, indent=2))
@@ -23,23 +23,25 @@ def lambda_handler(event, context):
 
         if record['eventName'] == 'MODIFY':
             if not 'friend_drive' in record['dynamodb']['NewImage']:
-                address = record['dynamodb']['NewImage']['Address']['S']
+                if not record['dynamodb']['NewImage']['status'] == 'off-market':
+                    address = record['dynamodb']['NewImage']['Address']['S']
 
         if address != None:
             sources.append(address)
 
-    #drive_times = get_drive_time_friend(sources)
-    #print('Drive to Friend {}'.format(json.dumps(drive_times, indent=2)))
+    #if sources:
+        #drive_times = get_drive_time_friend(sources)
+        #print('Drive to Friend {}'.format(json.dumps(drive_times, indent=2)))
 
-    #transit_commute = get_commute_transit(sources)
-    #print('Commute Transit {}'.format(json.dumps(transit_commute, indent=2)))
-    #drive_commute = get_commute_drive(sources)
-    #print('Commute Drive {}'.format(json.dumps(drive_commute, indent=2)))
+        #transit_commute = get_commute_transit(sources)
+        #print('Commute Transit {}'.format(json.dumps(transit_commute, indent=2)))
+        #drive_commute = get_commute_drive(sources)
+        #print('Commute Drive {}'.format(json.dumps(drive_commute, indent=2)))
 
-    #airport_transit_commute = get_airport_commute_transit(sources)
-    #print('Airport Commute Transit {}'.format(json.dumps(airport_transit_commute, indent=2)))
-    #airport_drive_commute = get_airport_commute_drive(sources)
-    #print('Airport Commute Drive {}'.format(json.dumps(airport_drive_commute, indent=2)))
+        #airport_transit_commute = get_airport_commute_transit(sources)
+        #print('Airport Commute Transit {}'.format(json.dumps(airport_transit_commute, indent=2)))
+        #airport_drive_commute = get_airport_commute_drive(sources)
+        #print('Airport Commute Drive {}'.format(json.dumps(airport_drive_commute, indent=2)))
 
 
     for address in sources:
@@ -94,9 +96,9 @@ def get_airport_commute(address, commute):
 def update_table (key, friend_drive, commute, places, score, crime):
     print('updating table {} - friend_drive = {}, commute = {}, places = {}, walk_score = {}, crime = {}'
             .format(key, friend_drive, commute, places, score, crime))
-    #update_expr = 'set friend_drive = :val1, set commute = :val2, places = :val3, walk_score = :val4, crime = :val5'
+    #update_expr = 'set friend_drive = :val1, commute = :val2, places = :val3, walk_score = :val4, crime = :val5'
     #response = table.update_item(
-    #            Key={'address': key},
+    #            Key={'Address': key},
     #            UpdateExpression=update_expr,
     #            ExpressionAttributeValues={
     #               ':val1': friend_drive,

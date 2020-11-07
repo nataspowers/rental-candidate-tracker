@@ -3,3 +3,9 @@ template.yaml
 !ParseTruilaSearchResults/
 ParseTruilaSearchResults/**/
 !ParaseTruilaSearchResults/trulia_scraper/
+six.py
+zope.*
+protego.py
+easy_install.py
+disutils-precedence.pth
+*.so

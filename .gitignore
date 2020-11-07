@@ -1,5 +1,4 @@
 AddressEnricherTrigger/**/
-ParseTruilaSearchResults/**/
 template.yaml
-!ParseTruilaSearchResults/truila_scraper
-!ParaseTruilaSearchResults/truila_scraper/*
+ParseTruilaSearchResults/*/
+!ParaseTruilaSearchResults/trulia_scraper/

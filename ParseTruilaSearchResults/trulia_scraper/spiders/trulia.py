@@ -15,24 +15,15 @@ class TruliaSpider(scrapy.Spider):
     client = ScraperAPIClient('22c786c81d0f6a84eb1312a0d6c6aec5')
     name = 'trulia'
     allowed_domains = ['trulia.com']
-    custom_settings = {
-                        'FEEDS': {
-                            'data/data_for_sale_%(state)s_%(city)s_%(time)s.jl':{
-                                'format': 'jsonlines',
-                                'store_empty': False,
-                                'item_export_kwargs': {
-                                    'export_empty_fields': False
-                                }
-                            }
-                        }
-                      }
+    custom_settings = {'FEED_URI': os.path.join(os.path.dirname(closest_scrapy_cfg()), 'data/data_for_sale_%(state)s_%(city)s_%(time)s.jl'),
+                       'FEED_FORMAT': 'jsonlines'}
 
-    def __init__(self, state='CA', city='Oakland', *args, **kwargs):
+    def __init__(self, state='CA', cities=['Oakland','Alameda','Berkeley'], *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.state = state
-        self.city = city
-        self.base_url = 'https://trulia.com/for_rent/{city},{state}/2000-4000_price/1300p_sqft/'.format(state=state, city=city)
-        self.start_urls = [self.client.scrapyGet(url=self.base_url)]
+        self.cities = cities
+        self.base_urls = ['https://trulia.com/for_rent/{city},{state}/2000-4000_price/1300p_sqft/'.format(state=state, city=city) for city in self.cities]
+        self.start_urls = [self.client.scrapyGet(url=url) for url in self.base_urls]
         self.le = LinkExtractor(restrict_xpaths='//*[@id="resultsColumn"]/div[1]')
 
     def parse(self, response):
@@ -74,7 +65,7 @@ class TruliaSpider(scrapy.Spider):
 
         fact_list = item_loader.nested_xpath('//*[@data-testid="facts-list"]')
         fact_list.add_xpath('bedrooms', xpath='.//*[@data-testid="home-summary-size-bedrooms"]/div/div[2]/text()', re=r'(\d+) (?:Beds|Bed|beds|bed)$')
-        fact_list.add_xpath('bathrooms', xpath='.//*[@data-testid="home-summary-size-bathrooms"]/div/div[2]/text()', re=r'(\d+) (?:Baths|Bath|baths|bath)$')
+        fact_list.add_xpath('bathrooms', xpath='.//*[@data-testid="home-summary-size-bathrooms"]/div/div[2]/text()', re=r'(\d+\.?[0-9]*) (?:Baths|Bath|baths|bath)$')
         fact_list.add_xpath('area', xpath='.//*[@data-testid="home-summary-size-floorspace"]/div/div[2]/text()', re=r'([\d,]+) sqft$')
 
         item_loader.add_xpath('description', '//*[@data-testid="home-description-text-description-text"]/text()')
@@ -137,3 +128,11 @@ class TruliaSpider(scrapy.Spider):
         heating = ' '.join([i for i in f_d if 'heating' in i])
         if heating:
             item['heating'] = heating.replace('heating: ','')
+
+        ac = [i for i in f_d if 'air conditioning' in i]
+        if ac:
+            item['ac'] = True
+
+        fitness = [i for i in f_d if 'fitness center' in i]
+        if fitness:
+            item['fitness'] = True

@@ -42,7 +42,7 @@ class TruliaItemLoader(ItemLoader):
 
     area_out = Compose(TakeFirst(), get_number_from_string)
     bedrooms_out = Compose(TakeFirst(), int)
-    bathrooms_out = Compose(TakeFirst(), int)
+    bathrooms_out = Compose(TakeFirst(), float)
     deposit = Compose(TakeFirst(), lambda s: int(s.replace(',', '')))
     year_built = Compose(TakeFirst(), int)
     days_on_market = Compose(TakeFirst(), int)

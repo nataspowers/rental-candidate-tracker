@@ -14,3 +14,6 @@ def get_next_weekday(startdate, weekday):
     d = datetime.strptime(startdate, '%Y-%m-%d')
     t = timedelta((7 + weekday - d.weekday()) % 7)
     return (d + t).strftime('%Y-%m-%d')
+
+def range(value, old_min, old_max, new_min, new_max):
+    return new_max - (((value - old_min) * (new_max-new_min)) / (old_max-old_min)) + new_min

@@ -11,6 +11,8 @@ from scrapy.exceptions import DropItem
 import boto3
 from boto3.dynamodb.conditions import Key
 
+from decimal import *
+
 class DuplicatesPipeline:
     def __init__(self):
         self.addresses_seen = set()
@@ -54,17 +56,18 @@ class DynamoDBPipeline:
     def from_crawler(cls, crawler):
         return cls(
             dynamodb_table=crawler.settings.get('DYNAMODB_TABLE'),
-            region=crawler.setting.get('REGION')
+            region=crawler.settings.get('REGION')
         )
 
     def open_spider(self,spider):
         self.dynamodb = boto3.resource('dynamodb',region_name=self.region)
         self.table = self.dynamodb.Table(self.dynamodb_table)
-        
+
         resp = self.table.query(
-                    IndexName="status-source-index",
-                    KeyConditionExpression=Key('status').eq('active') & Key('source').eq(spider.name)
-                    )
+                            IndexName="status-source-index",
+                            KeyConditionExpression=Key('status').eq('active') &
+                                                   Key('source').eq(spider.name)
+                            )
         self.previous_addresses = [i['Address'] for i in resp['Items']]
 
     def process_item(self, item, spider):
@@ -74,39 +77,48 @@ class DynamoDBPipeline:
             'source': spider.name,
             'status': 'active',
             'url': item['url'],
-            'price': {
-                'rent': item['price'],
-                'deposit': item['deposit']
-            },
-            'neighborhood': {
-                'name': item['neighborhood'],
-                'url': item['neighborhood_url']
-            },
-            'details':{
+            'details': {
                 'description': item['description'],
                 'features': item['features'],
-                'area': item['area'],
+                'area': int(item['area']),
                 'bedrooms': item['bedrooms'],
-                'bathrooms': item['bathrooms'],
-                'pets': item['pets'],
-                'year_built': item['year_built'],
-                'property_type': item['property_type'],
-                'days_on_market': item['days_on_market'],
-                'parking': item['parking'],
-                'floors': item['floors'],
-                'heating': item['heating']
-            }
-
+                'bathrooms': Decimal(str(item['bathrooms'])),
+                'pets': item['pets']
+                }
         }
 
+        if 'price' in item:
+            candidate['price'] = {'rent':item['price']}
+        if 'deposit' in item:
+            candidate['price']['deposit'] = item['deposit']
+        if 'neighborhood' in item:
+            candidate['neighborhood'] = {'name': item['neighborhood'],
+                                         'url': item['neighborhood_url']}
+        if 'year_built' in item:
+            candidate['details']['year_built'] = item['year_built']
+        if 'property_type' in item:
+            candidate['details']['property_type'] = item['property_type']
+        if 'days_on_market' in item:
+            candidate['details']['days_on_market'] = item['days_on_market']
+        if 'parking' in item:
+            candidate['details']['parking'] = item['parking']
+        if 'floors' in item:
+            candidate['details']['floors'] = item['floors']
+        if 'heating' in item:
+            candidate['details']['heating'] = item['heating']
+        if 'ac' in item:
+            candidate['details']['ac'] = item['ac']
+        if 'fitness' in item:
+            candidate['details']['fitness'] = item['fitness']
+
+        # TODO: if we want to handle multiple sources, will need a seperate list
+        # If the address exists from another source, would need a semi-complicated merge
         if candidate['Address'] not in self.previous_addresses:
 
-            self.table.put_item(
-                Item={candidate}
-            )
-            
+            self.table.put_item(Item=candidate)
+
         else:
-            
+
             self.previous_addresses.remove(candidate['Address'])
             self.table.update_item(
                 Key={
@@ -127,7 +139,7 @@ class DynamoDBPipeline:
                             ':6': candidate['details']
                 }
             )
-            
+
         return item
 
     def close_spider(self,spider):

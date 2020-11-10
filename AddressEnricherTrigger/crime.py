@@ -3,7 +3,7 @@ import requests
 import json
 from datetime import datetime, timedelta
 from locations import geocode
-from util import get_distance
+from util import get_distance, range
 
 soda_app_token = os.environ['soda_app_token']
 soda_api_secret = os.environ['soda_api_secret']
@@ -56,10 +56,11 @@ def grade_crime_time(ts):
     time = now - ts
     if time < timedelta(weeks=1):
         time = timedelta(weeks=1)
-    #old range was 1 week to 90 day, new range is 0 to 0.5
-    time_score = 0.5 - (((time - timedelta(weeks=1)).total_seconds() * (0.5-0)) / (timedelta(days=90)-timedelta(weeks=1)).total_seconds()) + 0
-    #print('time = {}, time score {}'.format(time, time_score))
-    return time_score
+
+    one_week = timedelta(weeks=1).total_seconds()
+    ninety_days = timedelta(days=90).total_seconds()
+
+    return range(time.total_seconds(),one_week,ninety_days,0,0.5)
 
 def grade_crime_distance(coord_1,coord_2,address):
     if coord_2:
@@ -70,8 +71,5 @@ def grade_crime_distance(coord_1,coord_2,address):
 
     if distance < 0.25: # roughly 5 city blocks
         distance = 0.25
-    # old range was 0.25 to 1, new range is 0 to 0.5
-    dist_score = 0.5 - (((distance - 0.25) * (0.5 - 0)) / (1 - 0.25)) + 0
-    #print('distance {} = distance score {}'.format(distance,dist_score))
 
-    return dist_score
+    return range(distance,0.5,1,0,0.5)

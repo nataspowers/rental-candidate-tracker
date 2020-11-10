@@ -30,17 +30,17 @@ def lambda_handler(event, context):
             sources.append(address)
 
     #if sources:
-        #drive_times = get_drive_time_friend(sources)
+        drive_times = get_drive_time_friend(sources)
         #print('Drive to Friend {}'.format(json.dumps(drive_times, indent=2)))
 
-        #transit_commute = get_commute_transit(sources)
+        transit_commute = get_commute_transit(sources)
         #print('Commute Transit {}'.format(json.dumps(transit_commute, indent=2)))
-        #drive_commute = get_commute_drive(sources)
+        drive_commute = get_commute_drive(sources)
         #print('Commute Drive {}'.format(json.dumps(drive_commute, indent=2)))
 
-        #airport_transit_commute = get_airport_commute_transit(sources)
+        airport_transit_commute = get_airport_commute_transit(sources)
         #print('Airport Commute Transit {}'.format(json.dumps(airport_transit_commute, indent=2)))
-        #airport_drive_commute = get_airport_commute_drive(sources)
+        airport_drive_commute = get_airport_commute_drive(sources)
         #print('Airport Commute Drive {}'.format(json.dumps(airport_drive_commute, indent=2)))
 
 
@@ -50,40 +50,45 @@ def lambda_handler(event, context):
         formatted_address = address_detail['formatted_address']
         geo = address_detail['geo']
 
-        #scores = get_walk_score(geo, formatted_address)
+        scores = get_walk_score(geo, formatted_address)
         #print('Scores {}'.format(json.dumps(scores, indent=2)))
 
-        #crime = get_crime(geo)
+        crime = get_crime(geo)
         #print('Crime {}'.format(json.dumps(crime, indent=2)))
 
-        #coffee = get_coffee_shops(geo)
+        coffee = get_coffee_shops(geo)
         #print('Coffee {}'.format(json.dumps(coffee, indent=2)))
 
-        #restaurant = get_restaurants(geo)
+        restaurant = get_restaurants(geo)
         #print('Restaurants {}'.format(json.dumps(restaurant, indent=2)))
 
-        #stores = get_convenience_store(geo)
+        stores = get_convenience_store(geo)
         #print('Convenience Stores {}'.format(json.dumps(stores, indent=2)))
 
-        #bart = get_bart(geo)
+        bart = get_bart(geo)
         #print('Bart {}'.format(json.dumps(bart, indent=2)))
-        #bart_geo = (bart['place']['geometry']['location']['lat'],
-        #                bart['place']['geometry']['location']['lng'])
-        #bart_commute = get_walking_time(geo, bart_geo)
+        bart_geo = (bart['place']['geometry']['location']['lat'],
+                        bart['place']['geometry']['location']['lng'])
+        bart_commute = get_walking_time(geo, bart_geo)
         #print('Bart Commute {}'.format(json.dumps(bart_commute, indent=2)))
-        #bart['commute'] = bart_commute
+        bart['commute'] = bart_commute
 
-        #friend_commute = fetch_drive_time(formatted_address, drive_times)[0]
+        friend_commute = fetch_drive_time(formatted_address, drive_times)[0]
 
-        #commute = {'transit' : fetch_drive_time(formatted_address, transit_commute)[0],
-        #            'drive' : fetch_drive_time(formatted_address, drive_commute)[0]}
-        #airports = {'transit' : get_airport_commute(formatted_address, airport_transit_commute),
-        #            'drive' : get_airport_commute(formatted_address, airport_drive_commute)}
+        commute = {'transit' : fetch_drive_time(formatted_address, transit_commute)[0],
+                    'drive' : fetch_drive_time(formatted_address, drive_commute)[0]}
+        airports = {'transit' : get_airport_commute(formatted_address, airport_transit_commute),
+                    'drive' : get_airport_commute(formatted_address, airport_drive_commute)}
         #print('Airport Commute {}'.format(json.dumps(airports, indent=2)))
-        #places = {'coffee' : coffee, 'restaurant' : restaurant,
-        #            'convenience_store':stores, 'bart':bart}
+        places = {
+            'coffee' : coffee,
+            'restaurant' : restaurant,
+            'convenience_store' : stores,
+            'bart' : bart,
+            'airports' : airports
+        }
 
-        #res = update_table(address, friend_commute, commute, places, scores, crime)
+        res = update_table(address, friend_commute, commute, places, scores, crime)
 
     return 'Successfully processed {} records.'.format(len(event['Records']))
 
@@ -96,17 +101,17 @@ def get_airport_commute(address, commute):
 def update_table (key, friend_drive, commute, places, score, crime):
     print('updating table {} - friend_drive = {}, commute = {}, places = {}, walk_score = {}, crime = {}'
             .format(key, friend_drive, commute, places, score, crime))
-    #update_expr = 'set friend_drive = :val1, commute = :val2, places = :val3, walk_score = :val4, crime = :val5'
-    #response = table.update_item(
-    #            Key={'Address': key},
-    #            UpdateExpression=update_expr,
-    #            ExpressionAttributeValues={
-    #               ':val1': friend_drive,
-    #               ':val2': commute,
-    #               ':val3': places,
-    #               ':val4': score,
-    #               ':val5': crime
-    #            }
-    #       )
-    #return response
-    return ''
+    update_expr = 'set friend_drive = :val1, commute = :val2, places = :val3, walk_score = :val4, crime = :val5'
+    response = table.update_item(
+                Key={'Address': key},
+                UpdateExpression=update_expr,
+                ExpressionAttributeValues={
+                   ':val1': friend_drive,
+                   ':val2': commute,
+                   ':val3': places,
+                   ':val4': score,
+                   ':val5': crime
+                }
+           )
+    return response
+    #return ''

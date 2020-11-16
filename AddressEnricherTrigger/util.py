@@ -15,5 +15,11 @@ def get_next_weekday(startdate, weekday):
     t = timedelta((7 + weekday - d.weekday()) % 7)
     return (d + t).strftime('%Y-%m-%d')
 
-def range(value, old_min, old_max, new_min, new_max):
-    return new_max - (((value - old_min) * (new_max-new_min)) / (old_max-old_min)) + new_min
+def map_range(value, old_min, old_max, new_min, new_max):
+    old_span = old_max - old_min
+    new_span = new_max - new_min
+
+    old_span = old_span if old_span != 0 else 1
+
+    scaled = float(value - old_min) / float(old_span)
+    return new_min + (scaled * new_span)

@@ -110,6 +110,8 @@ class DynamoDBPipeline:
             candidate['details']['ac'] = item['ac']
         if 'fitness' in item:
             candidate['details']['fitness'] = item['fitness']
+        if 'attributes' in item:
+            candidate['details']['attributes'] = item['attributes']
 
         # TODO: if we want to handle multiple sources, will need a seperate list
         # If the address exists from another source, would need a semi-complicated merge

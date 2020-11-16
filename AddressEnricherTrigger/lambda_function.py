@@ -1,4 +1,5 @@
 import json
+from decimal import Decimal
 from datetime import datetime, timedelta
 from crime import get_crime
 from util import get_distance, get_next_weekday
@@ -23,13 +24,13 @@ def lambda_handler(event, context):
 
         if record['eventName'] == 'MODIFY':
             if not 'friend_drive' in record['dynamodb']['NewImage']:
-                if not record['dynamodb']['NewImage']['status'] == 'off-market':
+                if not record['dynamodb']['NewImage']['status']['S'] == 'off-market':
                     address = record['dynamodb']['NewImage']['Address']['S']
 
         if address != None:
             sources.append(address)
-
-    #if sources:
+    """
+    if sources:
         drive_times = get_drive_time_friend(sources)
         #print('Drive to Friend {}'.format(json.dumps(drive_times, indent=2)))
 
@@ -42,7 +43,7 @@ def lambda_handler(event, context):
         #print('Airport Commute Transit {}'.format(json.dumps(airport_transit_commute, indent=2)))
         airport_drive_commute = get_airport_commute_drive(sources)
         #print('Airport Commute Drive {}'.format(json.dumps(airport_drive_commute, indent=2)))
-
+"""
 
     for address in sources:
         address_detail = geocode(address=address, api="google")
@@ -50,19 +51,20 @@ def lambda_handler(event, context):
         formatted_address = address_detail['formatted_address']
         geo = address_detail['geo']
 
-        scores = get_walk_score(geo, formatted_address)
-        #print('Scores {}'.format(json.dumps(scores, indent=2)))
+        """scores = get_walk_score(geo, formatted_address)
+        #print('Walk Scores {}'.format(json.dumps(scores, indent=2)))
 
-        crime = get_crime(geo)
+        #crime = get_crime(geo)
+        crime = {}
         #print('Crime {}'.format(json.dumps(crime, indent=2)))
 
         coffee = get_coffee_shops(geo)
         #print('Coffee {}'.format(json.dumps(coffee, indent=2)))
-
+"""
         restaurant = get_restaurants(geo)
         #print('Restaurants {}'.format(json.dumps(restaurant, indent=2)))
 
-        stores = get_convenience_store(geo)
+        """stores = get_convenience_store(geo)
         #print('Convenience Stores {}'.format(json.dumps(stores, indent=2)))
 
         bart = get_bart(geo)
@@ -75,21 +77,36 @@ def lambda_handler(event, context):
 
         friend_commute = fetch_drive_time(formatted_address, drive_times)[0]
 
-        commute = {'transit' : fetch_drive_time(formatted_address, transit_commute)[0],
+        work =     {'transit' : fetch_drive_time(formatted_address, transit_commute)[0],
                     'drive' : fetch_drive_time(formatted_address, drive_commute)[0]}
         airports = {'transit' : get_airport_commute(formatted_address, airport_transit_commute),
                     'drive' : get_airport_commute(formatted_address, airport_drive_commute)}
-        #print('Airport Commute {}'.format(json.dumps(airports, indent=2)))
+        print('Airport Commute {}'.format(json.dumps(airports, indent=2)))
+
+        commute = {
+            'work' : work,
+            'friend' : friend_commute,
+            'airports' : airports
+        }
+
         places = {
             'coffee' : coffee,
             'restaurant' : restaurant,
             'convenience_store' : stores,
-            'bart' : bart,
-            'airports' : airports
+            'bart' : bart
         }
 
-        res = update_table(address, friend_commute, commute, places, scores, crime)
+        print('Cadidate {} - commute = {}, places = {}, walk_score = {}, crime = {}'
+            .format(address,
+                    json.dumps(commute, indent=2),
+                    json.dumps(places, indent=2),
+                    json.dumps(scores, indent=2),
+                    json.dumps(crime, indent=2)
+                    )
+            )
 
+        res = update_table(address, commute, places, scores, crime)
+"""
     return 'Successfully processed {} records.'.format(len(event['Records']))
 
 def get_airport_commute(address, commute):
@@ -98,15 +115,20 @@ def get_airport_commute(address, commute):
         commutes[airport] = fetch_drive_time(address, commute)[idx]
     return commutes
 
-def update_table (key, friend_drive, commute, places, score, crime):
-    print('updating table {} - friend_drive = {}, commute = {}, places = {}, walk_score = {}, crime = {}'
-            .format(key, friend_drive, commute, places, score, crime))
-    update_expr = 'set friend_drive = :val1, commute = :val2, places = :val3, walk_score = :val4, crime = :val5'
+def update_table (key, commute, places, score, crime):
+
+    commute = json.loads(json.dumps(commute), parse_float=Decimal)
+    places = json.loads(json.dumps(places), parse_float=Decimal)
+    score = json.loads(json.dumps(score), parse_float=Decimal)
+    crime = json.loads(json.dumps(crime), parse_float=Decimal)
+
+    print('updating table {} - commute = {}, places = {}, walk_score = {}, crime = {}'
+            .format(key, commute, places, score, crime))
+    update_expr = 'set commute = :val2, places = :val3, walk_score = :val4, crime = :val5'
     response = table.update_item(
                 Key={'Address': key},
                 UpdateExpression=update_expr,
                 ExpressionAttributeValues={
-                   ':val1': friend_drive,
                    ':val2': commute,
                    ':val3': places,
                    ':val4': score,

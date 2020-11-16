@@ -15,14 +15,15 @@ class TruliaSpider(scrapy.Spider):
     client = ScraperAPIClient('22c786c81d0f6a84eb1312a0d6c6aec5')
     name = 'trulia'
     allowed_domains = ['trulia.com']
-    custom_settings = {'FEED_URI': os.path.join(os.path.dirname(closest_scrapy_cfg()), 'data/data_for_sale_%(state)s_%(city)s_%(time)s.jl'),
+    custom_settings = {'FEED_URI': '/tmp/data/data_for_rent_%(time)s.jl',
                        'FEED_FORMAT': 'jsonlines'}
 
     def __init__(self, state='CA', cities=['Oakland','Alameda','Berkeley'], *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.state = state
         self.cities = cities
-        self.base_urls = ['https://trulia.com/for_rent/{city},{state}/2000-4000_price/1300p_sqft/'.format(state=state, city=city) for city in self.cities]
+        url = 'https://trulia.com/for_rent/{city},{state}/2000-4000_price/1300p_sqft/'
+        self.base_urls = [url.format(state=state, city=city) for city in self.cities]
         self.start_urls = [self.client.scrapyGet(url=url) for url in self.base_urls]
         self.le = LinkExtractor(restrict_xpaths='//*[@id="resultsColumn"]/div[1]')
 
@@ -30,14 +31,18 @@ class TruliaSpider(scrapy.Spider):
         N = self.get_number_of_pages_to_scrape(response)
         self.logger.info("Determined that property pages are contained on {N} different index pages, each containing at most 30 properties. Proceeding to scrape each index page...".format(N=N))
         self.logger.info("Response URL is {}".format(response.url))
-        for url in [self.base_url + "{n}_p/".format(n=n) for n in range(1, N+1)]:
-            yield scrapy.Request(url=self.client.scrapyGet(url), callback=self.parse_index_page, dont_filter=True)
+        for base_url in self.base_urls:
+            for url in [base_url + "{n}_p/".format(n=n) for n in range(1, N+1)]:
+                yield scrapy.Request(url=self.client.scrapyGet(url), callback=self.parse_index_page, dont_filter=True)
 
     @staticmethod
     def get_number_of_pages_to_scrape(response):
         pagination = response.xpath('//*[@id="resultsColumn"]/div[2]/div/text()')
-        number_of_results = int(pagination.re(r'1-30 of ([\d,]+) Results')[0])
-        return math.ceil(number_of_results/30)
+        if pagination.re(r'1-30 of ([\d,]+) Results'):
+            number_of_results = int(pagination.re(r'1-30 of ([\d,]+) Results')[0])
+            return math.ceil(number_of_results/30)
+        else:
+            return 1
 
     def parse_index_page(self, response):
         links = self.le.extract_links(response)
@@ -72,6 +77,10 @@ class TruliaSpider(scrapy.Spider):
 
         features = item_loader.nested_xpath('//*[@data-testid="home-features"]')
         features.add_xpath('features', xpath='.//li/text()')
+
+        item_loader.add_xpath('attribute_values', '//*[@data-testid="wls-attribute"]/div/div/div/div/div/div[2]/div/text()', re=r'\d+')
+        item_loader.add_xpath('attribute_names', '//*[@data-testid="wls-attribute"]/div/div/div[2]/div/div[2]/div/text()')
+
 
 
     @staticmethod
@@ -136,3 +145,11 @@ class TruliaSpider(scrapy.Spider):
         fitness = [i for i in f_d if 'fitness center' in i]
         if fitness:
             item['fitness'] = True
+
+        if 'attribute_names' in item and 'attribute_values' in item:
+            item['attributes'] = {}
+            for idx, val in enumerate(item['attribute_names']):
+                item['attributes'][val] = item['attribute_values'][idx]
+
+            del item['attribute_names']
+            del item['attribute_values']

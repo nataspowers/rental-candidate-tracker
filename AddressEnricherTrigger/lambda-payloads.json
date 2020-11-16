@@ -113,6 +113,9 @@
                             },
                             "Address": {
                                 "S": "101"
+                            },
+                            "status": {
+                                "S": "active"
                             }
                         },
                         "StreamViewType": "NEW_AND_OLD_IMAGES",
@@ -149,6 +152,9 @@
                             },
                             "Address": {
                                 "S": "1000 Oak St, Oakland, CA 94607"
+                            },
+                            "status": {
+                                "S": "active"
                             }
                         },
                         "StreamViewType": "NEW_AND_OLD_IMAGES"
@@ -183,6 +189,9 @@
                             },
                             "Address": {
                                 "S": "2323 McGee Ave Berkeley, CA 94703"
+                            },
+                            "status": {
+                                "S": "active"
                             }
                         },
                         "StreamViewType": "NEW_AND_OLD_IMAGES"

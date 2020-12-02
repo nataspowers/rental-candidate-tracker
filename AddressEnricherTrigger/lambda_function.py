@@ -1,12 +1,26 @@
 import json
+import boto3
 from decimal import Decimal
 from datetime import datetime, timedelta
-from crime import get_crime
+
+if __name__ == '__main__':
+    """
+        Before we import other modules - if we are running as a script we need to load the
+        environment variables from template.yaml
+    """
+    import yaml
+    import os
+    with open('template.yaml', 'r') as stream:
+        var = yaml.load(stream, Loader=yaml.FullLoader)
+        for k,v in var['Resources']['AddressEnricherTrigger']['Properties']['Environment']['Variables'].items():
+            os.environ[k] = v
+
+from crime import get_crime, load_oakland_crime
 from util import get_distance, get_next_weekday
 from locations import *
 from commute import *
 from walkscore import get_walk_score
-import boto3
+
 
 print('Loading function')
 
@@ -43,28 +57,28 @@ def lambda_handler(event, context):
         #print('Airport Commute Transit {}'.format(json.dumps(airport_transit_commute, indent=2)))
         airport_drive_commute = get_airport_commute_drive(sources)
         #print('Airport Commute Drive {}'.format(json.dumps(airport_drive_commute, indent=2)))
-"""
+    """
 
     for address in sources:
         address_detail = geocode(address=address, api="google")
         #print(json.dumps(address_detail, indent=2))
         formatted_address = address_detail['formatted_address']
         geo = address_detail['geo']
-
-        """scores = get_walk_score(geo, formatted_address)
+        """
+        scores = get_walk_score(geo, formatted_address)
         #print('Walk Scores {}'.format(json.dumps(scores, indent=2)))
-
-        #crime = get_crime(geo)
-        crime = {}
-        #print('Crime {}'.format(json.dumps(crime, indent=2)))
-
+        """
+        crime = get_crime(formatted_address, geo)
+        #crime = {}
+        print('Crime for {} - {}'.format(formatted_address, json.dumps(crime, indent=2)))
+        """
         coffee = get_coffee_shops(geo)
         #print('Coffee {}'.format(json.dumps(coffee, indent=2)))
-"""
+
         restaurant = get_restaurants(geo)
         #print('Restaurants {}'.format(json.dumps(restaurant, indent=2)))
 
-        """stores = get_convenience_store(geo)
+        stores = get_convenience_store(geo)
         #print('Convenience Stores {}'.format(json.dumps(stores, indent=2)))
 
         bart = get_bart(geo)
@@ -73,7 +87,10 @@ def lambda_handler(event, context):
                         bart['place']['geometry']['location']['lng'])
         bart_commute = get_walking_time(geo, bart_geo)
         #print('Bart Commute {}'.format(json.dumps(bart_commute, indent=2)))
-        bart['commute'] = bart_commute
+        bart['commute'] = {
+            'distance' : bart_commute['rows'][0]['elements'][0]['distance'],
+            'duration' : bart_commute['rows'][0]['elements'][0]['duration']
+        }
 
         friend_commute = fetch_drive_time(formatted_address, drive_times)[0]
 
@@ -105,8 +122,8 @@ def lambda_handler(event, context):
                     )
             )
 
-        res = update_table(address, commute, places, scores, crime)
-"""
+        res = update_table(address, commute, places, scores, crime)"""
+
     return 'Successfully processed {} records.'.format(len(event['Records']))
 
 def get_airport_commute(address, commute):
@@ -122,8 +139,8 @@ def update_table (key, commute, places, score, crime):
     score = json.loads(json.dumps(score), parse_float=Decimal)
     crime = json.loads(json.dumps(crime), parse_float=Decimal)
 
-    print('updating table {} - commute = {}, places = {}, walk_score = {}, crime = {}'
-            .format(key, commute, places, score, crime))
+    #print('updating table {} - commute = {}, places = {}, walk_score = {}, crime = {}'
+    #        .format(key, commute, places, score, crime))
     update_expr = 'set commute = :val2, places = :val3, walk_score = :val4, crime = :val5'
     response = table.update_item(
                 Key={'Address': key},
@@ -137,3 +154,44 @@ def update_table (key, commute, places, score, crime):
            )
     return response
     #return ''
+
+def load_all_candidates ():
+
+    from boto3.dynamodb.conditions import Key
+
+    scan_kwargs = {
+        'FilterExpression': Key('status').eq('active'),
+        'ProjectionExpression': "Address"
+    }
+    done = False
+    start_key = None
+    items = []
+
+    start = datetime.now()
+    while not done:
+        if start_key:
+            scan_kwargs['ExclusiveStartKey'] = start_key
+        response = table.scan(**scan_kwargs)
+        items = items + response.get('Items', [])
+        start_key = response.get('LastEvaluatedKey', None)
+        done = start_key is None
+
+    candidates = []
+    for item in items:
+        candidates.append({
+            'eventName':'INSERT',
+            'dynamodb': {
+                'Keys': {
+                    'Address': {
+                        'S': item['Address']
+                    }
+                }
+            }
+        })
+    print('Loaded {} candidate addresses in {}'.format(len(candidates), datetime.now() - start))
+    return { 'Records': candidates }
+
+if __name__ == '__main__':
+    load_oakland_crime()
+    candidates = load_all_candidates()
+    lambda_handler(candidates,None)

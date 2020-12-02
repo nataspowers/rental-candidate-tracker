@@ -104,7 +104,7 @@
                     "dynamodb": {
                         "Keys": {
                             "Address": {
-                                "S": "6090 N Rockridge Blvd, Oakland, CA 94618"
+                                "S": "1008 Kains Ave, Albany, CA 94706"
                             }
                         },
                         "NewImage": {
@@ -142,7 +142,7 @@
                         "SequenceNumber": "222",
                         "Keys": {
                             "Address": {
-                                "S": "1000 Oak St, Oakland, CA 94607"
+                                "S": "1019 Linden St, Oakland, CA 94607"
                             }
                         },
                         "SizeBytes": 59,
@@ -151,7 +151,7 @@
                                 "S": "This item has changed"
                             },
                             "Address": {
-                                "S": "1000 Oak St, Oakland, CA 94607"
+                                "S": "1019 Linden St, Oakland, CA 94607"
                             },
                             "status": {
                                 "S": "active"
@@ -179,7 +179,7 @@
                         "SequenceNumber": "222",
                         "Keys": {
                             "Address": {
-                                "S": "2323 McGee Ave Berkeley, CA 94703"
+                                "S": "1635 62nd St, Berkeley, CA 94703"
                             }
                         },
                         "SizeBytes": 59,
@@ -188,7 +188,7 @@
                                 "S": "This item has changed"
                             },
                             "Address": {
-                                "S": "2323 McGee Ave Berkeley, CA 94703"
+                                "S": "1635 62nd St, Berkeley, CA 94703"
                             },
                             "status": {
                                 "S": "active"

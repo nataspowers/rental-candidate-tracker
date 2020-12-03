@@ -2,6 +2,7 @@ import googlemaps
 import requests
 import json
 import os
+from datetime import datetime
 
 from util import get_distance
 
@@ -29,7 +30,8 @@ def get_coffee_shops(start):
     }
 
     coffee_shops = []
-    received, total = -1, 0
+    received, total, retry = -1, 0, False
+    s = datetime.now()
     while received < total and received < 1000:
         req = requests.get(url=yelp_url, params=params, headers=yelp_header)
         response = json.loads(req.text)
@@ -39,14 +41,18 @@ def get_coffee_shops(start):
             total = response['total']
             received += len(businesses)
             params['offset'] = received
-        else:
-            print('Error? {}'.format(json.dumps(response, indent=2)))
+        elif response.get('error',{}).get('code','Other Error') == 'INTERNAL_ERROR' and not retry:
+            retry = True
+        else: # a different error, no businesses, or we've retried once already
+            print('Terminating try to get coffee for {} - last response {}'.format(start, response))
             break
 
+
+    print('Pulled all coffee shops for {} in {}'.format(start, datetime.now() - s))
     if coffee_shops:
         return analyze_places(coffee_shops, cat_stats=False)
     else:
-        print('No results!!!')
+        print('No coffee shops found...')
         return None
 
 
@@ -56,12 +62,12 @@ def get_restaurants(start):
               'longitude':start[1],
               'radius': round(mile),
               'categories':catagories,
-              'sort_by':'distance',
-              'limit' : 50
+              'sort_by':'distance'
     }
 
     restauraunts = []
-    received, total = -1, 0
+    received, total, retry = -1, 0, False
+    s = datetime.now()
     while received < total and received < 1000:
         req = requests.get(url=yelp_url, params=params, headers=yelp_header)
         response = json.loads(req.text)
@@ -71,16 +77,21 @@ def get_restaurants(start):
             total = response['total']
             received += len(businesses)
             params['offset'] = received
-        else:
-            print('Error? {}'.format(json.dumps(response, indent=2)))
+        elif response.get('error',{}).get('code','Other Error') == 'INTERNAL_ERROR' and not retry:
+            retry = True
+        else: # a different error, no businesses, or we've retried
+            print('Terminating try to get restauraunts for {} - last response {}'.format(start, response))
             break
 
         #print(json.dumps(response, indent=2))
 
-    results = analyze_places(restauraunts)
-    #print(json.dumps(results, indent = 2))
+    print('Pulled all restauraunts for {} in {}'.format(start, datetime.now() - s))
 
-    return results
+    if restauraunts:
+        return analyze_places(restauraunts)
+    else:
+        print('No restauraunts found...')
+        return None
 
 def get_convenience_store(start):
     params = {'latitude':start[0],
@@ -251,7 +262,11 @@ def geocode(address, api, batch=False):
             return locations
     else:
         address_detail = gmaps.geocode(address=address)
-        formatted_address = address_detail[0]['formatted_address']
-        geo = address_detail[0]['geometry']['location']
-        geo = (geo['lat'],geo['lng'])
-        return {'formatted_address':formatted_address, 'geo' : geo}
+        if len(address_detail) == 0:
+            print('No results found? address {}, result {}'.format(address, address_detail))
+            return None
+        else:
+            formatted_address = address_detail[0]['formatted_address']
+            geo = address_detail[0]['geometry']['location']
+            geo = (geo['lat'],geo['lng'])
+            return {'formatted_address':formatted_address, 'geo' : geo}

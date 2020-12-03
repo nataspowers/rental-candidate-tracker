@@ -89,7 +89,7 @@ weights = {
         'deposit' : 1,
         'year_built' : 4,
         'pets': 2,
-        'property_type': 2,
+        'property_type': 5,
         'ac': 5,
         'fitness': 2,
         'bedrooms': 5,
@@ -108,6 +108,7 @@ weights = {
         'work.transit':10,
         'friend':10,
         'walk':7,
+        'airports.OAK.transit':3,
     },
     'jen':{
         'area': 5,

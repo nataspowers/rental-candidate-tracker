@@ -130,7 +130,7 @@ def load_oakland_crime():
         This method is called when the python program is executed as a script
         Loads all oakland crimes and geocodes them
     """
-    days_ago = (now - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%S.%f")
+    days_ago = (now - timedelta(days=50)).strftime("%Y-%m-%dT%H:%M:%S.%f")
     params = {
         '$where':'{} > "{}" and {} in {}'.format('datetime', days_ago, 'crimetype',
                             tuple(violent_crimes + non_violent_crimes)),

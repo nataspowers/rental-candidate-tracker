@@ -37,41 +37,49 @@ def lambda_handler(event, context):
             address = record['dynamodb']['Keys']['Address']['S']
 
         if record['eventName'] == 'MODIFY':
-            if not 'friend_drive' in record['dynamodb']['NewImage']:
+            if not 'commute' in record['dynamodb']['NewImage']:
                 if not record['dynamodb']['NewImage']['status']['S'] == 'off-market':
                     address = record['dynamodb']['NewImage']['Address']['S']
 
         if address != None:
-            sources.append(address)
-    """
+            address_detail = geocode(address=address, api="google")
+            #print(json.dumps(address_detail, indent=2))
+            sources.append({
+                'original_address':address,
+                'formatted_address':address_detail['formatted_address'],
+                'geo':address_detail['geo']
+            })
+            print('Input "{}" Geocoded "{}"'.format(address, address_detail['formatted_address']))
+
     if sources:
-        drive_times = get_drive_time_friend(sources)
+        formatted_addresses = [item['formatted_address'] for item in sources]
+        geos = [item['geo'] for item in sources]
+        drive_times = get_drive_time_friend(formatted_addresses)
         #print('Drive to Friend {}'.format(json.dumps(drive_times, indent=2)))
 
-        transit_commute = get_commute_transit(sources)
+        transit_commute = get_commute_transit(formatted_addresses)
         #print('Commute Transit {}'.format(json.dumps(transit_commute, indent=2)))
-        drive_commute = get_commute_drive(sources)
+        drive_commute = get_commute_drive(formatted_addresses)
         #print('Commute Drive {}'.format(json.dumps(drive_commute, indent=2)))
 
-        airport_transit_commute = get_airport_commute_transit(sources)
+        airport_transit_commute = get_airport_commute_transit(formatted_addresses)
         #print('Airport Commute Transit {}'.format(json.dumps(airport_transit_commute, indent=2)))
-        airport_drive_commute = get_airport_commute_drive(sources)
+        airport_drive_commute = get_airport_commute_drive(formatted_addresses)
         #print('Airport Commute Drive {}'.format(json.dumps(airport_drive_commute, indent=2)))
-    """
+
 
     for address in sources:
-        address_detail = geocode(address=address, api="google")
-        #print(json.dumps(address_detail, indent=2))
-        formatted_address = address_detail['formatted_address']
-        geo = address_detail['geo']
-        """
+
+        formatted_address = address['formatted_address']
+        geo = address['geo']
+
         scores = get_walk_score(geo, formatted_address)
         #print('Walk Scores {}'.format(json.dumps(scores, indent=2)))
-        """
+
         crime = get_crime(formatted_address, geo)
         #crime = {}
         print('Crime for {} - {}'.format(formatted_address, json.dumps(crime, indent=2)))
-        """
+
         coffee = get_coffee_shops(geo)
         #print('Coffee {}'.format(json.dumps(coffee, indent=2)))
 
@@ -92,13 +100,13 @@ def lambda_handler(event, context):
             'duration' : bart_commute['rows'][0]['elements'][0]['duration']
         }
 
-        friend_commute = fetch_drive_time(formatted_address, drive_times)[0]
+        friend_commute = fetch_drive_time(formatted_address, drive_times, formatted_addresses)[0]
 
-        work =     {'transit' : fetch_drive_time(formatted_address, transit_commute)[0],
-                    'drive' : fetch_drive_time(formatted_address, drive_commute)[0]}
-        airports = {'transit' : get_airport_commute(formatted_address, airport_transit_commute),
-                    'drive' : get_airport_commute(formatted_address, airport_drive_commute)}
-        print('Airport Commute {}'.format(json.dumps(airports, indent=2)))
+        work =     {'transit' : fetch_drive_time(formatted_address, transit_commute, formatted_addresses)[0],
+                    'drive' : fetch_drive_time(formatted_address, drive_commute, formatted_addresses)[0]}
+        airports = {'transit' : get_airport_commute(formatted_address, airport_transit_commute, formatted_addresses),
+                    'drive' : get_airport_commute(formatted_address, airport_drive_commute, formatted_addresses)}
+        #print('Airport Commute {}'.format(json.dumps(airports, indent=2)))
 
         commute = {
             'work' : work,
@@ -112,7 +120,7 @@ def lambda_handler(event, context):
             'convenience_store' : stores,
             'bart' : bart
         }
-
+        """
         print('Cadidate {} - commute = {}, places = {}, walk_score = {}, crime = {}'
             .format(address,
                     json.dumps(commute, indent=2),
@@ -121,19 +129,23 @@ def lambda_handler(event, context):
                     json.dumps(crime, indent=2)
                     )
             )
-
-        res = update_table(address, commute, places, scores, crime)"""
+        """
+        res = update_table(address, commute, places, scores, crime)
 
     return 'Successfully processed {} records.'.format(len(event['Records']))
 
-def get_airport_commute(address, commute):
+def get_airport_commute(address, commute, index_list):
     commutes = {}
     for idx, airport in enumerate(commute['destination_addresses']):
-        commutes[airport] = fetch_drive_time(address, commute)[idx]
+        commutes[airport] = fetch_drive_time(address, commute, index_list)[idx]
     return commutes
 
-def update_table (key, commute, places, score, crime):
+def update_table (address, commute, places, score, crime):
 
+    location = json.loads(json.dumps({
+        'address': address['formatted_address'],
+        'geo': address['geo']
+    }),parse_float=Decimal)
     commute = json.loads(json.dumps(commute), parse_float=Decimal)
     places = json.loads(json.dumps(places), parse_float=Decimal)
     score = json.loads(json.dumps(score), parse_float=Decimal)
@@ -141,15 +153,19 @@ def update_table (key, commute, places, score, crime):
 
     #print('updating table {} - commute = {}, places = {}, walk_score = {}, crime = {}'
     #        .format(key, commute, places, score, crime))
-    update_expr = 'set commute = :val2, places = :val3, walk_score = :val4, crime = :val5'
+    update_expr = 'set #s1 = :val1, commute = :val2, places = :val3, walk_score = :val4, crime = :val5'
     response = table.update_item(
-                Key={'Address': key},
+                Key={'Address': address['original_address']},
                 UpdateExpression=update_expr,
+                ExpressionAttributeNames = {
+                  '#s1':'location'
+                },
                 ExpressionAttributeValues={
-                   ':val2': commute,
-                   ':val3': places,
-                   ':val4': score,
-                   ':val5': crime
+                    ':val1': location,
+                    ':val2': commute,
+                    ':val3': places,
+                    ':val4': score,
+                    ':val5': crime
                 }
            )
     return response
@@ -161,7 +177,7 @@ def load_all_candidates ():
 
     scan_kwargs = {
         'FilterExpression': Key('status').eq('active'),
-        'ProjectionExpression': "Address"
+        'ProjectionExpression': "Address, commute"
     }
     done = False
     start_key = None
@@ -178,17 +194,19 @@ def load_all_candidates ():
 
     candidates = []
     for item in items:
-        candidates.append({
-            'eventName':'INSERT',
-            'dynamodb': {
-                'Keys': {
-                    'Address': {
-                        'S': item['Address']
+        print(item)
+        if not item.get('commute',False): #if commute is there, we've already gathered at least some of this data
+            candidates.append({
+                'eventName':'INSERT',
+                'dynamodb': {
+                    'Keys': {
+                        'Address': {
+                            'S': item['Address']
+                        }
                     }
                 }
-            }
-        })
-    print('Loaded {} candidate addresses in {}'.format(len(candidates), datetime.now() - start))
+            })
+    print('Loaded {} candidate addresses (of {}) in {}'.format(len(candidates), len(items), datetime.now() - start))
     return { 'Records': candidates }
 
 if __name__ == '__main__':

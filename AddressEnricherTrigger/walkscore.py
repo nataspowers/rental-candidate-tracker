@@ -19,7 +19,7 @@ def get_walk_score(geo, address):
     scores = json.loads(req.text)
     if scores['status'] == 1:
         return {'walk':scores['walkscore'],
-                'transit':scores['transit'].get('score',None),
-                'bike':scores['bike'].get('score',None)}
+                'transit':scores.get('transit',{}).get('score',None),
+                'bike':scores.get('bike',{}).get('score',None)}
     else:
         return None

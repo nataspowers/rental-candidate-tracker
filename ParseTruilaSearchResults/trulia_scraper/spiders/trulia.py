@@ -89,7 +89,7 @@ class TruliaSpider(scrapy.Spider):
         s8 = ['section 8', 'section8', 'GoSection8.com']
         np = ['no pets', 'pets not allowed', 'no pets allowed','pets are not allowed']
         p = ['cats','small dogs', 'pet considered','pets considered','pets allowed','pets ok','pets okay','pets negotiable']
-        features = [str.casefold(f) for f in item['features']]
+        features = [str.casefold(f) for f in item.get('features',[])]
         description = [str.casefold(d) for d in item['description']]
         f_d = features + description
 

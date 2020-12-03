@@ -20,15 +20,18 @@ def get_drive_time_friend(start):
     """
     @start: location to calculate driving distance from
     """
-
     weekend = get_next_weekday(now.strftime("%Y-%m-%d"), 5) + " 14:00:00"
     weekend = datetime.strptime(weekend, '%Y-%m-%d %H:%M:%S')
-    distance = gmaps.distance_matrix(origins=start,
-                                    destinations=friend_geo,
-                                    mode="driving",
-                                    units="imperial",
-                                    departure_time=weekend)
-    return distance
+
+    #print('Getting dinstances from these locations {}'.format(start))
+    distances = get_distance_matrix(origins=start,
+                                        destinations=friend_geo,
+                                        mode="driving",
+                                        units="imperial",
+                                        departure_time=weekend)
+
+    #print('distance matrix to friend complete - {}'.format(distances))
+    return distances
 
 def get_commute_transit(start):
     """
@@ -36,7 +39,7 @@ def get_commute_transit(start):
     """
     monday_morning = get_next_weekday(now.strftime("%Y-%m-%d"), 0) + " 08:00:00"
     monday_morning = datetime.strptime(monday_morning, '%Y-%m-%d %H:%M:%S')
-    distance = gmaps.distance_matrix(origins=start,
+    distance = get_distance_matrix(origins=start,
                                     destinations=work_geo,
                                     mode="transit",
                                     units="imperial",
@@ -50,7 +53,7 @@ def get_commute_drive(start):
     """
     monday_morning = get_next_weekday(now.strftime("%Y-%m-%d"), 0) + " 07:00:00"
     monday_morning = datetime.strptime(monday_morning, '%Y-%m-%d %H:%M:%S')
-    distance = gmaps.distance_matrix(origins=start,
+    distance = get_distance_matrix(origins=start,
                                     destinations=work_geo,
                                     mode="driving",
                                     units="imperial",
@@ -62,7 +65,7 @@ def get_walking_time(start, destination):
     @start: location to calculate walking distance from
     """
 
-    distance = gmaps.distance_matrix(origins=start,
+    distance = get_distance_matrix(origins=start,
                                     destinations=destination,
                                     mode="walking",
                                     units="imperial")
@@ -74,7 +77,7 @@ def get_airport_commute_drive(start):
     """
     monday_morning = get_next_weekday(now.strftime("%Y-%m-%d"), 0) + " 08:00:00"
     monday_morning = datetime.strptime(monday_morning, '%Y-%m-%d %H:%M:%S')
-    distance = gmaps.distance_matrix(origins=start,
+    distance = get_distance_matrix(origins=start,
                                     destinations=airports,
                                     mode="driving",
                                     units="imperial",
@@ -87,7 +90,7 @@ def get_airport_commute_transit(start):
     """
     monday_morning = get_next_weekday(now.strftime("%Y-%m-%d"), 0) + " 09:00:00"
     monday_morning = datetime.strptime(monday_morning, '%Y-%m-%d %H:%M:%S')
-    distance = gmaps.distance_matrix(origins=start,
+    distance = get_distance_matrix(origins=start,
                                     destinations=airports,
                                     mode="transit",
                                     units="imperial",
@@ -95,11 +98,41 @@ def get_airport_commute_transit(start):
                                     arrival_time=monday_morning)
     return distance
 
+def get_distance_matrix(origins, destinations, mode, units, departure_time=None, arrival_time=None,
+                        transit_routing_preference=None):
 
-def fetch_drive_time(item_to_find, matrix):
+
+    max_batch = min(25,100/len(destinations)) #25 origins or destinations, max 100 returned items total
+    #print('{} destinations, max batch set to {}'.format(len(destinations), max_batch))
+    distances = {
+        'destination_addresses': [],
+        'origin_addresses': [],
+        'rows': []
+    }
+    sls = 0
+    while sls < len(origins):
+        sle = min(sls+max_batch, len(origins)+1)
+        batch = origins[sls:sle]
+
+        #print('slice {} to {} for batch of {} - origins={}'.format(sls,sle,len(batch),len(origins)))
+        dm = gmaps.distance_matrix(origins=batch,
+                                    destinations=destinations,
+                                    mode=mode,
+                                    units=units,
+                                    departure_time=departure_time,
+                                    arrival_time=arrival_time,
+                                    transit_routing_preference=transit_routing_preference)
+        distances['destination_addresses'] = dm['destination_addresses']
+        distances['origin_addresses'].extend(dm['origin_addresses'])
+        distances['rows'].extend(dm['rows'])
+        sls = sle
+    return distances
+
+
+def fetch_drive_time(item_to_find, matrix, index_list):
     #print('looking for: {}'.format(item_to_find))
     #print('In Matrix {}'.format(json.dumps(matrix, indent=2)))
-    index = matrix['origin_addresses'].index(item_to_find)
+    index = index_list.index(item_to_find)
     #print('index found = {}'.format(index))
     #print('Matrix {}'.format(json.dumps(matrix['rows'], indent=2)))
     return matrix['rows'][index]['elements']

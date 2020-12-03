@@ -34,6 +34,7 @@ def lambda_handler(event, context):
         start_key = response.get('LastEvaluatedKey', None)
         done = start_key is None
 
+    print('loaded {} candidates'.format(len(items)))
     print_missing_property_types(items)
     print_missing_attributes(items)
     print_missing_rest_cats(items)
@@ -68,7 +69,7 @@ def lambda_handler(event, context):
             pct = (score / max_score[person]) * 100
             print('#{} {} ({}) score {} ({}%)'.format(i+1, address, url, score, pct))
 
-    #response = update_table(items, max_score)
+    response = update_table(items, max_score)
 
 def score_item(item, weight, stats, person):
     s = {}
@@ -480,6 +481,7 @@ class DecimalEncoder(json.JSONEncoder):
 
 def update_table (items, max_score):
 
+    print('updating {} items'.format(len(items)))
     for i in items:
 
         score = {p: {'score_detail': i[p]['score'],

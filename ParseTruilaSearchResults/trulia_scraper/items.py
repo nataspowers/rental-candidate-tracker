@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from scrapy.loader import ItemLoader
-from itemloaders.processors import TakeFirst, MapCompose, Identity, Compose
+from itemloaders.processors import TakeFirst, MapCompose, Identity, Compose, Join
 import scrapy
 from trulia_scraper.parsing import remove_empty, get_number_from_string
 
@@ -44,6 +44,7 @@ class TruliaItemLoader(ItemLoader):
     features_out = Compose(remove_empty)
     heating_out = Compose(remove_empty)
     floors_out = Compose(remove_empty)
+    city_state_out = Join(', ')
 
     attribute_values_out = Compose(remove_empty)
     attribute_names_out = Compose(remove_empty)

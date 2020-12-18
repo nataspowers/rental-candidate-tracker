@@ -9,3 +9,6 @@ def lambda_handler(event, context):
     process = CrawlerProcess(get_project_settings())
     process.crawl('trulia')
     process.start() # the script will block here until the crawling is finished
+
+if __name__ == '__main__':
+    lambda_handler(None,None)

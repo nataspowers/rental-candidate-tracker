@@ -3,17 +3,12 @@ import boto3
 from functools import reduce
 from boto3.dynamodb.conditions import Key
 from decimal import Decimal
+from datetime import datetime
 
 from constants import *
 
 
 print('Loading function')
-
-dynamodb = boto3.resource('dynamodb')
-table = dynamodb.Table('Candidates')
-scan_kwargs = {
-        'FilterExpression': Key('status').eq('active')
-}
 
 missing_property_types = []
 missing_restaurant_cat_types = []
@@ -23,9 +18,16 @@ crime_violent_nonviolent_ratio = 5
 
 
 def lambda_handler(event, context):
+    dynamodb = boto3.resource('dynamodb')
+    table = dynamodb.Table('Candidates')
+    scan_kwargs = {
+            'FilterExpression': Key('status').eq('active')
+    }
+
     done = False
     start_key = None
     items = []
+    start = datetime.now()
     while not done:
         if start_key:
             scan_kwargs['ExclusiveStartKey'] = start_key
@@ -34,18 +36,21 @@ def lambda_handler(event, context):
         start_key = response.get('LastEvaluatedKey', None)
         done = start_key is None
 
-    print('loaded {} candidates'.format(len(items)))
+    print('loaded {} candidates in {}'.format(len(items), datetime.now() - start))
     print_missing_property_types(items)
     print_missing_attributes(items)
     print_missing_rest_cats(items)
 
     for person, weight in weights.items():
 
+        start = datetime.now()
         stats = generate_stats(items, person)
         #print('{}"s Calculated stats {}'.format(person, json.dumps(stats, indent=2, cls=DecimalEncoder)))
         stats = generate_averages(stats)
-        print("{}'s Calculated stats with averages {}".format(person, json.dumps(stats, indent=2, cls=DecimalEncoder)))
+        if person == 'all':
+            print("{}'s Calculated stats with averages in {} - {}".format(person, datetime.now() - start, json.dumps(stats, indent=2, cls=DecimalEncoder)))
 
+        start = datetime.now()
         for item in items:
             if not item.get(person,False):
                 item[person] = {}
@@ -53,10 +58,13 @@ def lambda_handler(event, context):
             #print('Score: {}'.format(item[person]['score']))
             item[person]['total'] = sum(item[person]['score'].values())
             #print('Item {} scores {}'.format(item['Address'], json.dumps(item['score'], indent=2, cls=DecimalEncoder)))
+        print('scored items in {}'.format(datetime.now() - start))
 
     sorted_items = {}
+    start = datetime.now()
     for person in weights.keys():
         sorted_items[person] = sorted(items, key = lambda i: i[person]['total'], reverse=True)
+    print('sorted items in {}'.format(datetime.now() - start))
 
     max_score = {i : reduce(lambda a,b : a+b, weights[i].values()) * 10 for i in weights}
 
@@ -158,9 +166,15 @@ def get_val(key, item, person=None):
             print('found {} with ppsf over 3 = {}'.format(item['Address'], val))
     elif key == 'area':
         val = item.get('details',{}).get('area',None)
+        if isinstance(val,str) and '-' in val:
+            val = int((val.split('-',1)[1]).strip()) # take the larger end if area is a range
         if val is not None and val > 10000:
             print('found {} with area over 10000 = {}'.format(item['Address'], val))
             val = val / 10
+    elif key == 'rent':
+        val = item.get('price',{}).get('rent',None)
+        if isinstance(val,str) and '-' in val:
+            val = int((val.split('-',1)[1]).strip()) # take the larger end if rent is a range
     elif key == 'property_type':
         pt = item.get('details',{}).get(key,False)
         if not pt:
@@ -480,8 +494,10 @@ class DecimalEncoder(json.JSONEncoder):
         return super(DecimalEncoder, self).default(obj)
 
 def update_table (items, max_score):
+    dynamodb = boto3.resource('dynamodb')
+    table = dynamodb.Table('Candidates')
 
-    print('updating {} items'.format(len(items)))
+    start = datetime.now()
     for i in items:
 
         score = {p: {'score_detail': i[p]['score'],
@@ -496,5 +512,6 @@ def update_table (items, max_score):
                         ':val1': json.loads(json.dumps(score), parse_float=Decimal)
                         }
                 )
+    print('updated {} items in {}'.format(len(items), datetime.now() - start))
 
     return response

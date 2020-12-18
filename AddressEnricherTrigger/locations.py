@@ -3,6 +3,7 @@ import requests
 import json
 import os
 from datetime import datetime
+from geopy.geocoders import get_geocoder_for_service
 
 from util import get_distance
 
@@ -33,7 +34,12 @@ def get_coffee_shops(start):
     received, total, retry = -1, 0, False
     s = datetime.now()
     while received < total and received < 1000:
-        req = requests.get(url=yelp_url, params=params, headers=yelp_header)
+        try:
+            req = requests.get(url=yelp_url, params=params, headers=yelp_header)
+            req.raise_for_status()
+        except requests.HTTPError:
+            if not retry:
+                retry = True
         response = json.loads(req.text)
         businesses = response.get('businesses',[])
         if businesses:
@@ -48,7 +54,7 @@ def get_coffee_shops(start):
             break
 
 
-    print('Pulled all coffee shops for {} in {}'.format(start, datetime.now() - s))
+    print('Pulled {} coffee shops for {} in {}'.format(len(coffee_shops), start, datetime.now() - s))
     if coffee_shops:
         return analyze_places(coffee_shops, cat_stats=False)
     else:
@@ -70,6 +76,7 @@ def get_restaurants(start):
     s = datetime.now()
     while received < total and received < 1000:
         req = requests.get(url=yelp_url, params=params, headers=yelp_header)
+        req.raise_for_status()
         response = json.loads(req.text)
         businesses = response.get('businesses',[])
         if businesses:
@@ -85,7 +92,7 @@ def get_restaurants(start):
 
         #print(json.dumps(response, indent=2))
 
-    print('Pulled all restauraunts for {} in {}'.format(start, datetime.now() - s))
+    print('Pulled {} restauraunts for {} in {}'.format(len(restauraunts), start, datetime.now() - s))
 
     if restauraunts:
         return analyze_places(restauraunts)
@@ -101,6 +108,7 @@ def get_convenience_store(start):
               'sort_by':'distance'
     }
     req = requests.get(url=yelp_url, params=params, headers=yelp_header)
+    req.raise_for_status()
     stores = json.loads(req.text)
     #print(json.dumps(stores, indent=2))
     results = filter_places('yelp', stores, start, 3.0)
@@ -123,6 +131,11 @@ def filter_places(api,places,start,min_rating):
     closest_dist = 5000
     result_term = 'results' if api == 'google' else 'businesses'
     review_count_term = 'user_ratings_total' if api == 'google' else 'review_count'
+
+    if not places.get(result_term,False):
+        print ('No places of place type for {} - places = {}'.format(start, places))
+        return None
+
     for idx, place in enumerate(places[result_term]):
         #print ('place {}'.format(idx))
         if api == 'google':
@@ -239,13 +252,14 @@ def unique_flatten(t):
                 unique_list.append(item)
     return unique_list
 
-def geocode(address, api, batch=False):
+def geocode(address, api, batch=False, config=None):
     if api == 'mapquest':
-        params = {  'key':mapquest_key,
-                    'location':address,
-                    'maxResults':1
+        params = {  'key' : mapquest_key,
+                    'location' : address,
+                    'maxResults' : 1
                  }
         req = requests.get(url=mapquest_url, params=params)
+        req.raise_for_status()
         location = json.loads(req.text)
         #print('Location {}'.format(json.dumps(location, indent=2)))
         if not batch:
@@ -260,7 +274,7 @@ def geocode(address, api, batch=False):
                     'geo': (r['locations'][0]['latLng']['lat'], r['locations'][0]['latLng']['lng'])
                 })
             return locations
-    else:
+    elif api == 'google':
         address_detail = gmaps.geocode(address=address)
         if len(address_detail) == 0:
             print('No results found? address {}, result {}'.format(address, address_detail))
@@ -269,4 +283,12 @@ def geocode(address, api, batch=False):
             formatted_address = address_detail[0]['formatted_address']
             geo = address_detail[0]['geometry']['location']
             geo = (geo['lat'],geo['lng'])
-            return {'formatted_address':formatted_address, 'geo' : geo}
+            return { 'formatted_address' : formatted_address, 'geo' : geo }
+    else:
+        cls = get_geocoder_for_service(api)
+        geolocator = cls(**config)
+        location = geolocator.geocode(address)
+        return {
+            'formatted_address' : location.address,
+            'geo' : (location.latitude, location.longitude)
+        }

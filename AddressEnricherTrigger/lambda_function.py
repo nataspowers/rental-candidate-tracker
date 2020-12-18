@@ -24,9 +24,6 @@ from walkscore import get_walk_score
 
 print('Loading function')
 
-dynamodb = boto3.resource('dynamodb')
-table = dynamodb.Table('Candidates')
-
 def lambda_handler(event, context):
     #print("Received event: " + json.dumps(event, indent=2))
     sources = []
@@ -76,9 +73,13 @@ def lambda_handler(event, context):
         scores = get_walk_score(geo, formatted_address)
         #print('Walk Scores {}'.format(json.dumps(scores, indent=2)))
 
-        crime = get_crime(formatted_address, geo)
+        crime = get_crime(formatted_address, geo, 'mixed')
         #crime = {}
-        print('Crime for {} - {}'.format(formatted_address, json.dumps(crime, indent=2)))
+        print('Soda crime score for {} - {}'.format(formatted_address, json.dumps(crime, indent=2)))
+
+        #crime = get_crime(formatted_address, geo, 'crimeometer')
+        #crime = {}
+        #print('Crimeometer crime score for {} - {}'.format(formatted_address, json.dumps(crime, indent=2)))
 
         coffee = get_coffee_shops(geo)
         #print('Coffee {}'.format(json.dumps(coffee, indent=2)))
@@ -141,6 +142,8 @@ def get_airport_commute(address, commute, index_list):
     return commutes
 
 def update_table (address, commute, places, score, crime):
+    dynamodb = boto3.resource('dynamodb')
+    table = dynamodb.Table('Candidates')
 
     location = json.loads(json.dumps({
         'address': address['formatted_address'],
@@ -175,6 +178,9 @@ def load_all_candidates ():
 
     from boto3.dynamodb.conditions import Key
 
+    dynamodb = boto3.resource('dynamodb')
+    table = dynamodb.Table('Candidates')
+
     scan_kwargs = {
         'FilterExpression': Key('status').eq('active'),
         'ProjectionExpression': "Address, commute"
@@ -194,7 +200,7 @@ def load_all_candidates ():
 
     candidates = []
     for item in items:
-        print(item)
+        #print(item)
         if not item.get('commute',False): #if commute is there, we've already gathered at least some of this data
             candidates.append({
                 'eventName':'INSERT',
@@ -210,6 +216,7 @@ def load_all_candidates ():
     return { 'Records': candidates }
 
 if __name__ == '__main__':
-    load_oakland_crime()
+    import os
+    load_oakland_crime(api='bing', config={'api_key':os.environ['bing_key']})
     candidates = load_all_candidates()
     lambda_handler(candidates,None)

@@ -13,6 +13,7 @@ def get_next_weekday(startdate, weekday):
     """
     d = datetime.strptime(startdate, '%Y-%m-%d')
     t = timedelta((7 + weekday - d.weekday()) % 7)
+    t = timedelta(7) if t == timedelta(0) else t #if today is the weekday in question, return next week
     return (d + t).strftime('%Y-%m-%d')
 
 def map_range(value, old_min, old_max, new_min, new_max):

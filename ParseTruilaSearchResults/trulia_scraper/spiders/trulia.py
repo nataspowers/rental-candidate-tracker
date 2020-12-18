@@ -71,7 +71,7 @@ class TruliaSpider(scrapy.Spider):
         fact_list = item_loader.nested_xpath('//*[@data-testid="facts-list"]')
         fact_list.add_xpath('bedrooms', xpath='.//*[@data-testid="home-summary-size-bedrooms"]/div/div[2]/text()', re=r'(\d+) (?:Beds|Bed|beds|bed)$')
         fact_list.add_xpath('bathrooms', xpath='.//*[@data-testid="home-summary-size-bathrooms"]/div/div[2]/text()', re=r'(\d+\.?[0-9]*) (?:Baths|Bath|baths|bath)$')
-        fact_list.add_xpath('area', xpath='.//*[@data-testid="home-summary-size-floorspace"]/div/div[2]/text()', re=r'([\d,]+) sqft$')
+        fact_list.add_xpath('area', xpath='.//*[@data-testid="home-summary-size-floorspace"]/div/div[2]/text()', re=r'([\d, -]+)')
 
         item_loader.add_xpath('description', '//*[@data-testid="home-description-text-description-text"]/text()')
 

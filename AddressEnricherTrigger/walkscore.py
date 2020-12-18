@@ -16,6 +16,7 @@ def get_walk_score(geo, address):
               'format': 'json'
     }
     req = requests.get(url=ws_url, params=params, headers=ws_header)
+    req.raise_for_status()
     scores = json.loads(req.text)
     if scores['status'] == 1:
         return {'walk':scores['walkscore'],

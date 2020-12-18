@@ -11,6 +11,8 @@ from scrapy.exceptions import DropItem
 import boto3
 from boto3.dynamodb.conditions import Key
 
+from datetime import datetime
+
 from decimal import *
 
 class DuplicatesPipeline:
@@ -63,12 +65,26 @@ class DynamoDBPipeline:
         self.dynamodb = boto3.resource('dynamodb',region_name=self.region)
         self.table = self.dynamodb.Table(self.dynamodb_table)
 
-        resp = self.table.query(
-                            IndexName="status-source-index",
-                            KeyConditionExpression=Key('status').eq('active') &
-                                                   Key('source').eq(spider.name)
-                            )
-        self.previous_addresses = [i['Address'] for i in resp['Items']]
+        scan_kwargs = {
+            'FilterExpression': Key('status').eq('active'),
+            'ProjectionExpression': "Address"
+        }
+        done = False
+        start_key = None
+        items = []
+
+        start = datetime.now()
+        while not done:
+            if start_key:
+                scan_kwargs['ExclusiveStartKey'] = start_key
+            response = self.table.scan(**scan_kwargs)
+            items = items + response.get('Items', [])
+            start_key = response.get('LastEvaluatedKey', None)
+            done = start_key is None
+
+        print('Loaded {} candidate addresses in {}'.format(len(items), datetime.now() - start))
+        self.previous_addresses = [a['Address'] for a in items]
+
 
     def process_item(self, item, spider):
 
@@ -80,15 +96,31 @@ class DynamoDBPipeline:
             'details': {
                 'description': item['description'],
                 'features': item['features'],
-                'area': int(item['area']),
                 'bedrooms': item['bedrooms'],
                 'bathrooms': Decimal(str(item['bathrooms'])),
                 'pets': item['pets']
-                }
+            }
         }
 
         if 'price' in item:
-            candidate['price'] = {'rent':item['price']}
+            if '-' in item['price']:
+                s = item['price'].split('-')
+                if s[0].strip() == s[1].strip():
+                    candidate['price'] = {'rent':int(s[0])}
+                else:
+                    candidate['price'] = {'rent':item['price']}
+            else:
+                candidate['price'] = {'rent':int(item['price'])}
+        if 'area' in item:
+            if '-' in item['area']:
+                s = item['area'].split('-')
+                if s[0].strip() == s[1].strip():
+                    candidate['details'] = {'area':int(s[0])}
+                else:
+                    candidate['details'] = {'area':item['area']}
+            else:
+                candidate['details'] = {'area':int(item['area'])}
+
         if 'deposit' in item:
             candidate['price']['deposit'] = item['deposit']
         if 'neighborhood' in item:

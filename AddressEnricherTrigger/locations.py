@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 from geopy.geocoders import get_geocoder_for_service
 
-from util import get_distance
+from util import get_distance, mile, half_mile
 
 gmaps = googlemaps.Client(key=os.environ['gmap_key'])
 
@@ -75,8 +75,12 @@ def get_restaurants(start):
     received, total, retry = -1, 0, False
     s = datetime.now()
     while received < total and received < 1000:
-        req = requests.get(url=yelp_url, params=params, headers=yelp_header)
-        req.raise_for_status()
+        try:
+            req = requests.get(url=yelp_url, params=params, headers=yelp_header)
+            req.raise_for_status()
+        except requests.HTTPError:
+            if not retry:
+                retry = True
         response = json.loads(req.text)
         businesses = response.get('businesses',[])
         if businesses:
@@ -101,15 +105,26 @@ def get_restaurants(start):
         return None
 
 def get_convenience_store(start):
+    retry = False
     params = {'latitude':start[0],
               'longitude':start[1],
               'radius': round(mile),
               'categories':'convenience',
               'sort_by':'distance'
     }
-    req = requests.get(url=yelp_url, params=params, headers=yelp_header)
-    req.raise_for_status()
-    stores = json.loads(req.text)
+    while 1:
+        try:
+            req = requests.get(url=yelp_url, params=params, headers=yelp_header)
+            req.raise_for_status()
+        except:
+            if not retry:
+                retry = True
+                continue
+        stores = json.loads(req.text)
+        if stores.get('error',{}).get('code','Other Error') == 'INTERNAL_ERROR' and not retry:
+            retry = True
+            continue
+        break
     #print(json.dumps(stores, indent=2))
     results = filter_places('yelp', stores, start, 3.0)
     return results
@@ -125,7 +140,7 @@ def get_bart(start):
     #print(json.dumps(results, indent=2))
     return results['closest']
 
-def filter_places(api,places,start,min_rating):
+def filter_places(api, places, start, min_rating):
     highest_rated = {}
     closest = {}
     closest_dist = 5000

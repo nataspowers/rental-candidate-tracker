@@ -52,11 +52,10 @@ def lambda_handler(event, context):
 
         start = datetime.now()
         for item in items:
-            if not item.get(person,False):
+            if not person in item:
                 item[person] = {}
-            item[person]['score'] = score_item(item, weight, stats, person)
-            #print('Score: {}'.format(item[person]['score']))
-            item[person]['total'] = sum(item[person]['score'].values())
+            item[person]['score'] = score_item(item, weight, stats, person, items)
+            item[person]['total'] = sum(i['score'] for i in item[person]['score'].values())
             #print('Item {} scores {}'.format(item['Address'], json.dumps(item['score'], indent=2, cls=DecimalEncoder)))
         print('scored items in {}'.format(datetime.now() - start))
 
@@ -75,17 +74,39 @@ def lambda_handler(event, context):
             address = sorted_items[person][i]['Address']
             url = sorted_items[person][i]['url']
             pct = (score / max_score[person]) * 100
-            print('#{} {} ({}) score {} ({}%)'.format(i+1, address, url, score, pct))
+            print('#{} {} ({}) score {} ({}%)'.format(i+1, address, url, round(score,2), round(pct,2)))
 
     response = update_table(items, max_score)
 
-def score_item(item, weight, stats, person):
+def score_item(item, weight, stats, person, items):
+    start = datetime.now()
     s = {}
     for key, rank in weight.items():
+        if not key in stats:
+            print('Missing stat for key {} for item {}'.format(key, item['Address']))
+            break
         missing_value = stats[key]['avg']
         val = get_val(key, item, person)
         reverse = key in lower_better_types
-        s[key] = score_normal(val, missing_value, rank, stats[key]['max'], stats[key]['min'], reverse=reverse)
+        val_list = []
+        [val_list.append(get_val(key, i, person)) for i in items if get_val(key, i, person) is not None]
+        val_list.sort(reverse=not reverse)
+        rank_val = {
+            'rank' : int(val_list.index(val) if val is not None else int(len(val_list)/2)),
+            'count' : len(val_list),
+            'stats' : {
+                'min' : stats[key]['min'],
+                'avg' : round(stats[key]['avg']),
+                'max' : stats[key]['max']
+            }
+        }
+        s[key] = {
+            'score' : score_normal(val, missing_value, rank, stats[key]['max'], stats[key]['min'], reverse=reverse),
+            'value' : val,
+            'weight' : rank,
+            'rank' : rank_val
+            }
+    print('For {}, scored item {} in {}'.format(person, item['Address'], datetime.now() - start))
     return s
 
 def score_normal(value, missing_value, rank, old_max, old_min, reverse=False):
@@ -159,17 +180,21 @@ def map_range(value, old_max, old_min, new_max, new_min):
 def get_val(key, item, person=None):
     #print('Getting value {}'.format(key))
     val = None
+    if item is None:
+        print('called get_val with item = None? - key is {} person is {}'.format(key,person))
+        return None
+
     if key == 'ppsf':
         if 'area' in item.get('details',{}) and 'rent' in item.get('price',{}):
             val =  get_val('rent', item) / get_val('area', item)
-        if val is not None and val > 3:
-            print('found {} with ppsf over 3 = {}'.format(item['Address'], val))
+        #if val is not None and val > 4:
+            #print('found {} with ppsf over 3 = {}'.format(item['Address'], val))
     elif key == 'area':
         val = item.get('details',{}).get('area',None)
         if isinstance(val,str) and '-' in val:
             val = int((val.split('-',1)[1]).strip()) # take the larger end if area is a range
         if val is not None and val > 10000:
-            print('found {} with area over 10000 = {}'.format(item['Address'], val))
+            #print('found {} with area over 10000 = {}'.format(item['Address'], val))
             val = val / 10
     elif key == 'rent':
         val = item.get('price',{}).get('rent',None)
@@ -384,14 +409,18 @@ def get_place_val(place_type, place):
     elif get_place_type(place_type) == 'bart':
         return get_bart_val(place_type, place.get('bart',None))
     elif get_place_type(place_type) == 'convenience_store':
-        highest_rated = place.get('convenience_store',{}).get('highest_rated',{}).get('value',None)
-        closest = place.get('convenience_store',{}).get('closest',{}).get('value',None)
-        if highest_rated is not None and closest is not None:
-            return highest_rated * closest
-        elif highest_rated is not None:
-            return highest_rated
-        elif closest is not None:
-            return closest
+        place = place.get('convenience_store',None)
+        if not place:
+            return None
+        else:
+            highest_rated = place.get('highest_rated',{}).get('value',None)
+            closest =place.get('closest',{}).get('value',None)
+            if highest_rated is not None and closest is not None:
+                return highest_rated * closest
+            elif highest_rated is not None:
+                return highest_rated
+            elif closest is not None:
+                return closest
     return None
 
 def get_place_type(key):
@@ -444,7 +473,7 @@ def get_restaurant_coffee_val(key, p, place_type):
                     return None
                 return int(stats[key]['total']) * float(stats[key]['rating']['average'])
     elif 'distance' in key:
-        if p.get('distance-group-stats',False):
+        if 'distance-group-stats' in p:
             k = place_type+'.stats.distance.'
             return sum(float(get_restaurant_coffee_val(k+str(i),p,place_type)) * (6-i)
                     for i in range(0,5)
@@ -501,17 +530,20 @@ def update_table (items, max_score):
     for i in items:
 
         score = {p: {'score_detail': i[p]['score'],
-                     'total': sum(i[p]['score'].values()),
-                     'pct': (sum(i[p]['score'].values()) / max_score[p]) * 100}
+                     'total': i[p]['total'],
+                     'pct': (i[p]['total'] / max_score[p]) * 100}
                 for p in weights.keys() if p != 'all'}
 
         response = table.update_item(
                     Key={'Address': i['Address']},
                     UpdateExpression='set score = :val1',
                     ExpressionAttributeValues={
-                        ':val1': json.loads(json.dumps(score), parse_float=Decimal)
+                        ':val1': json.loads(json.dumps(score, cls=DecimalEncoder), parse_float=Decimal)
                         }
                 )
     print('updated {} items in {}'.format(len(items), datetime.now() - start))
 
     return response
+
+if __name__ == '__main__':
+    lambda_handler(None,None)

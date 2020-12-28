@@ -19,6 +19,7 @@ class TruliaItem(scrapy.Item):
     bathrooms = scrapy.Field()
     attribute_names = scrapy.Field()
     attribute_values = scrapy.Field()
+    telephone = scrapy.Field()
 
     # Items generated from further parsing of 'raw' scraped data
     section8 = scrapy.Field()

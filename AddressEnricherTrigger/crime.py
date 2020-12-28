@@ -3,7 +3,8 @@ import requests
 import json
 from datetime import datetime, timedelta
 from locations import geocode
-from util import get_distance, map_range
+from util import map_range, quarter_mile, half_mile, mile
+from geopy import distance
 
 crime_app_token = json.loads(os.environ['crime_app_token'])
 crime_api_secret = json.loads(os.environ['crime_api_secret'])
@@ -22,6 +23,9 @@ oak_crime = [] #stores oakland crimes if they are preloaded
 
 now = datetime.now()
 start_time = datetime.now()
+crime_eval_period = 90
+one_week_seconds = timedelta(weeks=1).total_seconds()
+crime_eval_period_seconds = timedelta(days=crime_eval_period).total_seconds()
 
 def get_crime(address, geo, api='mixed'):
     #print('get_crime ({},{})'.format(address, geo))
@@ -50,16 +54,16 @@ def get_crime_soda(geo, location):
         crime_type_column = 'crimetype'
         datetime_column = 'datetime'
         additional = 'and policebeat in {}'.format(tuple(oakland_police_beats))
-        #location_search = 'within_circle({},{},{},{}) and '.format(location_column, geo[0],geo[1],810)
+        #location_search = 'within_circle({},{},{},{}) and '.format(location_column, geo[0],geo[1],round(half_mile))
         location_search = ''
     else:
         location_column = 'block_location'
         crime_type_column = 'offense'
         datetime_column = 'eventdt'
-        location_search = 'within_circle({},{},{},{}) and '.format(location_column, geo[0],geo[1],810)
+        location_search = 'within_circle({},{},{},{}) and '.format(location_column, geo[0],geo[1],round(half_mile))
         additional = ''
 
-    days_ago = (now - timedelta(days=90)).strftime("%Y-%m-%dT%H:%M:%S.%f")
+    days_ago = (now - timedelta(days=crime_eval_period)).strftime("%Y-%m-%dT%H:%M:%S.%f")
     params = {  '$where':'{}{} > "{}" and {} in {} {}'
                     .format(location_search, datetime_column, days_ago, crime_type_column,
                             tuple(violent_crimes + non_violent_crimes), additional),
@@ -78,11 +82,11 @@ def get_crime_alameda(geo):
 def get_crime_crimeometer(geo):
 
     cur_page = 1
-    days_ago = (now - timedelta(days=90)).strftime("%Y-%m-%d %H:%M:%S")
+    days_ago = (now - timedelta(days=crime_eval_period)).strftime("%Y-%m-%d %H:%M:%S")
     params = {
         'lat': geo[0],
         'lon': geo[1],
-        'distance':'810m',
+        'distance': '{}m'.format(round(half_mile)),
         'datetime_ini': days_ago,
         'datetime_end' : (now - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S"),
         'page' : cur_page
@@ -149,7 +153,6 @@ def filter_and_score_crime(start,crimes,location):
             else:
                 crime_address = '{}, {}, {}'.format(crime[address_column],crime['city'],crime['state'])
 
-
         try:
             crime_time = datetime.strptime(crime[datetime_column], '%Y-%m-%dT%H:%M:%S.%f')
         except ValueError:
@@ -174,27 +177,24 @@ def filter_and_score_crime(start,crimes,location):
     return {'violent':v, 'non-violent':nv}
 
 def grade_crime_time(ts):
-    time = now - ts
-    if time < timedelta(weeks=1):
-        time = timedelta(weeks=1)
+    time = (now - ts).total_seconds()
+    if time < one_week_seconds:
+        time = one_week_seconds
 
-    one_week = timedelta(weeks=1).total_seconds()
-    ninety_days = timedelta(days=90).total_seconds()
+    return map_range(time, one_week_seconds, crime_eval_period_seconds, 0, 0.5)
 
-    return map_range(time.total_seconds(),one_week,ninety_days,0,0.5)
-
-def grade_crime_distance(coord_1,coord_2,address):
+def grade_crime_distance(coord_1, coord_2, address):
     if coord_2:
-        distance = get_distance(coord_1,coord_2)
+        d = distance.distance(coord_1, coord_2).meters
     else:
         geo = geocode(address=address, api="mapquest")['geo']
-        distance = get_distance(coord_1, geo)
+        d = distance.distance(coord_1, geo).meters
 
-    if distance < 0.25: # roughly 5 city blocks - everything that close is the same risk
-        distance = 0.25
+    if d < (quarter_mile / 2):
+        d = (quarter_mile / 2)
 
-    if distance <= 1: #ignore crime more than 1 mile away
-        return 0.5 - map_range(distance,0.25,1,0,0.5)
+    if d <= half_mile: #ignore crime more than 0.5 mile away
+        return 0.5 - map_range(d, (quarter_mile / 2), half_mile, 0, 0.5)
     else:
         return 0
 
@@ -203,42 +203,24 @@ def load_oakland_crime(api='mapquest', config=None):
         This method is called when the python program is executed as a script
         Loads all oakland crimes and geocodes them
     """
-    days_ago = (now - timedelta(days=90)).strftime("%Y-%m-%dT%H:%M:%S.%f")
-    params = {
-        '$where':'{} > "{}" and {} in {}'.format('datetime', days_ago, 'crimetype',
-                            tuple(violent_crimes + non_violent_crimes)),
-        '$limit':50000
-    }
-    print('Load Oakland Crime - parameters {}'.format(params))
-    req = requests.get(url=crime_url['oakland'], params=params, headers=crime_header['oakland'])
-    crimes = json.loads(req.text)
-    print('Found {} Oakland crimes to filter and geocode'.format(len(crimes)))
+    from boto3.dynamodb.conditions import Key
+    import boto3
 
-    if api == 'mapquest':
-        report = 100
-    else:
-        report = 10
+    dynamodb = boto3.resource('dynamodb')
+    table = dynamodb.Table('Crimes')
 
-    address_batch = []
+    scan_kwargs = {'FilterExpression': Key('city').eq('Oakland'),
+                    'ProjectionExpression': 'details'}
+    done = False
+    start_key = None
+
     start = datetime.now()
-    for idx, crime in enumerate(crimes):
-        if crime['crimetype'] in non_violent_crimes or crime['crimetype'] in violent_crimes:
-            if api == 'mapquest':
-                address_batch.append('{}, {}, {}'.format(crime['address'], crime['city'], crime['state']))
-                if len(address_batch) == 10:
-                    geos = geocode(address=address_batch, api=api, batch=True)
-                    for geo in geos:
-                        crime = next(item for item in crimes
-                                    if '{}, {}, {}'.format(item["address"], item["city"], item["state"]) == geo['formated_address'])
-                        crime['location_1'] = {'latitude':geo['geo'][0],'longitude':geo['geo'][1]}
-                    oak_crime.append(crime)
-                    address_batch = []
-            else:
-                address = '{}, {}, {}'.format(crime['address'], crime['city'], crime['state'])
-                geo = geocode(address=address, api=api, batch=False, config=config)
-                crime['location_1'] = {'latitude':geo['geo'][0],'longitude':geo['geo'][1]}
-                oak_crime.append(crime)
-        if (idx+1) % report == 0:
-            print('Filtered {} and Geocoded {} total crimes in {}'.format(idx+1, len(oak_crime), datetime.now() - start))
-            start = datetime.now()
+    while not done:
+        if start_key:
+            scan_kwargs['ExclusiveStartKey'] = start_key
+        response = table.scan(**scan_kwargs)
+        if not response.get('Count',0) == 0:
+            oak_crime.extend([item['details'] for item in response['Items'] if 'details' in item])
+        start_key = response.get('LastEvaluatedKey', None)
+        done = start_key is None
     return

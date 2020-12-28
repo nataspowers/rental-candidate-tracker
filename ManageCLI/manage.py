@@ -3,6 +3,7 @@ import boto3
 from decimal import Decimal
 from datetime import datetime, timedelta
 import re
+from prompt_toolkit import print_formatted_text as print
 import webbrowser
 
 dynamodb = boto3.resource('dynamodb')

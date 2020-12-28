@@ -1,6 +1,9 @@
 from datetime import datetime, timedelta
 from geopy import distance
 
+quarter_mile = 402.336
+half_mile = quarter_mile * 2
+mile = half_mile * 2
 
 def get_distance(coords_1, coords_2):
     #print('start {} - end {}'.format(coords_1,coords_2))

@@ -73,6 +73,7 @@ class TruliaSpider(scrapy.Spider):
         fact_list.add_xpath('bathrooms', xpath='.//*[@data-testid="home-summary-size-bathrooms"]/div/div[2]/text()', re=r'(\d+\.?[0-9]*) (?:Baths|Bath|baths|bath)$')
         fact_list.add_xpath('area', xpath='.//*[@data-testid="home-summary-size-floorspace"]/div/div[2]/text()', re=r'([\d, -]+)')
 
+        item_loader.add_xpath('telephone', '//*[@data-testid="home-description-text-description-phone-number"]/div/div[2]/text()')
         item_loader.add_xpath('description', '//*[@data-testid="home-description-text-description-text"]/text()')
 
         features = item_loader.nested_xpath('//*[@data-testid="home-features"]')
@@ -90,7 +91,7 @@ class TruliaSpider(scrapy.Spider):
         np = ['no pets', 'pets not allowed', 'no pets allowed','pets are not allowed']
         p = ['cats','small dogs', 'pet considered','pets considered','pets allowed','pets ok','pets okay','pets negotiable']
         features = [str.casefold(f) for f in item.get('features',[])]
-        description = [str.casefold(d) for d in item['description']]
+        description = [str.casefold(d) for d in item.get('description',[])]
         f_d = features + description
 
         section8 = [item for s8_phrase in s8 for item in f_d if s8_phrase in item]

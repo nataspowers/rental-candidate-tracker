@@ -94,14 +94,18 @@ class DynamoDBPipeline:
             'status': 'active',
             'url': item['url'],
             'details': {
-                'description': item['description'],
-                'features': item['features'],
-                'bedrooms': item['bedrooms'],
-                'bathrooms': Decimal(str(item['bathrooms'])),
-                'pets': item['pets']
+                'features': item.get('features',None),
+                'pets': item['pets'],
             }
         }
-
+        if 'telephone' in item:
+            candidate['details']['telephone'] = item['telephone']
+        if 'description' in item:
+            candidate['details']['description'] = item['description']
+        if 'bedrooms' in item:
+            candidate['details']['bedrooms'] = item['bedrooms']
+        if 'bathrooms' in item:
+            candidate['details']['bathrooms'] = Decimal(str(item['bathrooms']))
         if 'price' in item:
             if '-' in item['price']:
                 s = item['price'].split('-')
@@ -152,26 +156,32 @@ class DynamoDBPipeline:
             self.table.put_item(Item=candidate)
 
         else:
-
             self.previous_addresses.remove(candidate['Address'])
+            update_exp = 'set #s1=:1, #s2=:2, #u1=:3, details=:4'
+            expression_attr_values = {
+                ':1': candidate['source'],
+                ':2': candidate['status'],
+                ':3': candidate['url'],
+                ':4': candidate['details']
+            }
+            if 'price' in candidate:
+                update_exp += ', price=:5'
+                expression_attr_values[':5'] = candidate['price']
+            if 'neighborhood' in candidate:
+                update_exp += ', neighborhood=:6'
+                expression_attr_values[':6'] = candidate['neighborhood']
+
             self.table.update_item(
                 Key={
                     'Address': candidate['Address']
                 },
-                UpdateExpression="set #s1=:1, #s2=:2, #u1=:3, price=:4, neighborhood=:5, details=:6",
+                UpdateExpression=update_exp,
                 ExpressionAttributeNames={
                     '#s1':'source',
                     '#s2':'status',
                     '#u1':'url'
                 },
-                ExpressionAttributeValues={
-                            ':1': candidate['source'],
-                            ':2': candidate['status'],
-                            ':3': candidate['url'],
-                            ':4': candidate['price'],
-                            ':5': candidate['neighborhood'],
-                            ':6': candidate['details']
-                }
+                ExpressionAttributeValues=expression_attr_values
             )
 
         return item

@@ -156,25 +156,29 @@ def update_table (address, commute, places, score, crime):
 
     #print('updating table {} - commute = {}, places = {}, walk_score = {}, crime = {}'
     #        .format(key, commute, places, score, crime))
-    update_expr = 'set #s1 = :val1, commute = :val2, places = :val3, walk_score = :val4, crime = :val5'
+    update_expr = 'set #s1 = :val1, commute = :val2, places = :val3, walk_score = :val4'
+    expression_attr_values = {
+        ':val1': location,
+        ':val2': commute,
+        ':val3': places,
+        ':val4': score,
+    }
+    if crime:
+        update_expr += ', crime = :val5'
+        expression_attr_values[':val5'] = crime
+
     response = table.update_item(
                 Key={'Address': address['original_address']},
                 UpdateExpression=update_expr,
                 ExpressionAttributeNames = {
                   '#s1':'location'
                 },
-                ExpressionAttributeValues={
-                    ':val1': location,
-                    ':val2': commute,
-                    ':val3': places,
-                    ':val4': score,
-                    ':val5': crime
-                }
+                ExpressionAttributeValues=expression_attr_values
            )
     return response
     #return ''
 
-def load_all_candidates ():
+def load_all_candidates (filter = True):
 
     from boto3.dynamodb.conditions import Key
 
@@ -201,7 +205,7 @@ def load_all_candidates ():
     candidates = []
     for item in items:
         #print(item)
-        if not item.get('commute',False): #if commute is there, we've already gathered at least some of this data
+        if not filter or (filter and not 'commute' in item):
             candidates.append({
                 'eventName':'INSERT',
                 'dynamodb': {
@@ -217,6 +221,7 @@ def load_all_candidates ():
 
 if __name__ == '__main__':
     import os
-    load_oakland_crime(api='bing', config={'api_key':os.environ['bing_key']})
-    candidates = load_all_candidates()
+    #load_oakland_crime(api='bing', config={'api_key':os.environ['bing_key']})
+    load_oakland_crime()
+    candidates = load_all_candidates(filter=True)
     lambda_handler(candidates,None)

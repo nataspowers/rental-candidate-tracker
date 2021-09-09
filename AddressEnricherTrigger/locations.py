@@ -25,7 +25,7 @@ mile = half_mile * 2
 def get_coffee_shops(start):
     params = {'latitude':start[0],
               'longitude':start[1],
-              'radius': round(half_mile),
+              'radius': round(3 * quarter_mile),
               'categories':'coffee',
               'sort_by':'distance'
     }
@@ -134,7 +134,7 @@ def get_bart(start):
     bart = gmaps.places(query='bart',
                     location=start,
                     radius=5 * round(mile),
-                    type='transit_station')
+                    type='subway_station')
 
     results = filter_places('google', bart, start, 0.0)
     #print(json.dumps(results, indent=2))

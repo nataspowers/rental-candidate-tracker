@@ -9,11 +9,12 @@ from itemadapter import ItemAdapter
 from scrapy.exceptions import DropItem
 
 import boto3
-from boto3.dynamodb.conditions import Key
+from boto3.dynamodb.conditions import Key, Attr
 
 from datetime import datetime
 
-from decimal import *
+from decimal import Decimal
+import json
 
 class DuplicatesPipeline:
     def __init__(self):
@@ -35,6 +36,16 @@ class Section8FilterPipeline:
 
         if adapter['section8']:
             raise DropItem(f"Section 8 property: {item!r}")
+        else:
+            return item
+
+class FurnishedFilterPipeline:
+
+    def process_item(self, item, spider):
+        adapter = ItemAdapter(item)
+
+        if adapter.get('furnished',False):
+            raise DropItem(f"Furnished property: {item!r}")
         else:
             return item
 
@@ -62,12 +73,15 @@ class DynamoDBPipeline:
         )
 
     def open_spider(self,spider):
-        self.dynamodb = boto3.resource('dynamodb',region_name=self.region)
-        self.table = self.dynamodb.Table(self.dynamodb_table)
+        session = boto3.Session(region_name=self.region)
+        credentials = session.get_credentials()
+        dynamodb = session.resource('dynamodb')
+        table = dynamodb.Table(self.dynamodb_table)
 
         scan_kwargs = {
-            'FilterExpression': Key('status').eq('active'),
-            'ProjectionExpression': "Address"
+            'FilterExpression': Key('status').eq('active') | Key('status').eq('removed') | Key('status').eq('off-market'),
+            'ProjectionExpression': "Address, #s",
+            'ExpressionAttributeNames': {'#s':'status',}
         }
         done = False
         start_key = None
@@ -77,101 +91,108 @@ class DynamoDBPipeline:
         while not done:
             if start_key:
                 scan_kwargs['ExclusiveStartKey'] = start_key
-            response = self.table.scan(**scan_kwargs)
+            response = table.scan(**scan_kwargs)
             items = items + response.get('Items', [])
             start_key = response.get('LastEvaluatedKey', None)
             done = start_key is None
 
         print('Loaded {} candidate addresses in {}'.format(len(items), datetime.now() - start))
-        self.previous_addresses = [a['Address'] for a in items]
+        self.previous_addresses = {a['Address']:a['status'] for a in items}
 
 
     def process_item(self, item, spider):
-
+        adapter = ItemAdapter(item)
         candidate = {
-            'Address': '{}, {}'.format(item['address'],item['city_state']),
+            'Address': '{}, {}'.format(adapter['address'],adapter['city_state']),
             'source': spider.name,
+            'created': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'status': 'active',
-            'url': item['url'],
+            'url': adapter['url'],
             'details': {
-                'features': item.get('features',None),
-                'pets': item['pets'],
+                'features': adapter.get('features',None),
+                'pets': adapter['pets'],
+                'bedrooms': adapter.get('bedrooms',None),
+                'bathrooms': adapter.get('bathrooms',None),
+                'description' : adapter.get('description',None),
+                'telephone' : adapter.get('telephone',None),
+                'year_built' : adapter.get('year_built',None),
+                'property_type' : adapter.get('property_type',None),
+                'days_on_market' : adapter.get('days_on_market',None),
+                #'parking' : ''.join([str(elem) for elem in adapter.get('parking',[])]),
+                #'floors' : adapter.get('floors',None),
+                'heating' : adapter.get('heating',None),
+                'ac' : adapter.get('ac',None),
+                'fitness' : adapter.get('fitness',None),
+                'attributes' : adapter.get('attributes',None),
+                'furnished' : adapter.get('furnished',None)
             }
         }
-        if 'telephone' in item:
-            candidate['details']['telephone'] = item['telephone']
-        if 'description' in item:
-            candidate['details']['description'] = item['description']
-        if 'bedrooms' in item:
-            candidate['details']['bedrooms'] = item['bedrooms']
-        if 'bathrooms' in item:
-            candidate['details']['bathrooms'] = Decimal(str(item['bathrooms']))
-        if 'price' in item:
-            if '-' in item['price']:
-                s = item['price'].split('-')
+
+        if 'price' in adapter:
+            if '-' in adapter['price']:
+                s = adapter['price'].split('-')
                 if s[0].strip() == s[1].strip():
                     candidate['price'] = {'rent':int(s[0])}
                 else:
-                    candidate['price'] = {'rent':item['price']}
+                    candidate['price'] = {'rent':adapter['price']}
             else:
-                candidate['price'] = {'rent':int(item['price'])}
-        if 'area' in item:
-            if '-' in item['area']:
-                s = item['area'].split('-')
+                candidate['price'] = {'rent':int(adapter['price'])}
+        if 'area' in adapter:
+            if '-' in adapter['area']:
+                s = adapter['area'].split('-')
                 if s[0].strip() == s[1].strip():
-                    candidate['details'] = {'area':int(s[0])}
+                    candidate['details']['area'] = int(s[0])
                 else:
-                    candidate['details'] = {'area':item['area']}
+                    candidate['details']['area'] = adapter['area']
             else:
-                candidate['details'] = {'area':int(item['area'])}
+                candidate['details']['area'] = adapter['area']
 
-        if 'deposit' in item:
-            candidate['price']['deposit'] = item['deposit']
-        if 'neighborhood' in item:
-            candidate['neighborhood'] = {'name': item['neighborhood'],
-                                         'url': item['neighborhood_url']}
-        if 'year_built' in item:
-            candidate['details']['year_built'] = item['year_built']
-        if 'property_type' in item:
-            candidate['details']['property_type'] = item['property_type']
-        if 'days_on_market' in item:
-            candidate['details']['days_on_market'] = item['days_on_market']
-        if 'parking' in item:
-            candidate['details']['parking'] = item['parking']
-        if 'floors' in item:
-            candidate['details']['floors'] = item['floors']
-        if 'heating' in item:
-            candidate['details']['heating'] = item['heating']
-        if 'ac' in item:
-            candidate['details']['ac'] = item['ac']
-        if 'fitness' in item:
-            candidate['details']['fitness'] = item['fitness']
-        if 'attributes' in item:
-            candidate['details']['attributes'] = item['attributes']
+        if 'deposit' in adapter:
+            candidate['price']['deposit'] = adapter['deposit']
+        if 'neighborhood' in adapter:
+            candidate['neighborhood'] = {'name': adapter['neighborhood'],
+                                         'url': adapter['neighborhood_url']}
+
+         # remove empty strings and None
+        candidate = {key:val for key, val in candidate.items() if val}
+        candidate['details'] = {key:val for key, val in candidate['details'].items() if val}
+
+        dynamodb = boto3.resource('dynamodb',region_name=self.region)
+        table = dynamodb.Table(self.dynamodb_table)
 
         # TODO: if we want to handle multiple sources, will need a seperate list
         # If the address exists from another source, would need a semi-complicated merge
         if candidate['Address'] not in self.previous_addresses:
-
-            self.table.put_item(Item=candidate)
+            print('  ***** New Property -> {}  *****'.format(candidate['Address']))
+            table.put_item(Item=json.loads(json.dumps(candidate), parse_float=Decimal))
 
         else:
-            self.previous_addresses.remove(candidate['Address'])
-            update_exp = 'set #s1=:1, #s2=:2, #u1=:3, details=:4'
+            #use the status we had from before, so that we don't "unremove" address that have been removed
+            if self.previous_addresses[candidate['Address']] != 'off-market':
+                candidate['status'] = self.previous_addresses[candidate['Address']]
+            else:
+                print('  ***** Changing Property from off-market to active -> {}  *****'.format(candidate['Address']))
+                candidate['status'] = 'active'
+
+            self.previous_addresses.pop(candidate['Address'])
+            print('  ***** Existing Property -> {}, status {}  *****'.format(candidate['Address'], candidate['status']))
+
+            update_exp = 'set #s1=:1, #s2=:2, #u1=:3, details=:4, refreshed=:5'
             expression_attr_values = {
                 ':1': candidate['source'],
                 ':2': candidate['status'],
                 ':3': candidate['url'],
-                ':4': candidate['details']
+                ':4': json.loads(json.dumps(candidate['details']), parse_float=Decimal),
+                ':5': candidate['created']
             }
             if 'price' in candidate:
-                update_exp += ', price=:5'
-                expression_attr_values[':5'] = candidate['price']
+                update_exp += ', price=:6'
+                expression_attr_values[':6'] = json.loads(json.dumps(candidate['price']), parse_float=Decimal)
             if 'neighborhood' in candidate:
-                update_exp += ', neighborhood=:6'
-                expression_attr_values[':6'] = candidate['neighborhood']
+                update_exp += ', neighborhood=:7'
+                expression_attr_values[':7'] = candidate['neighborhood']
 
-            self.table.update_item(
+            table.update_item(
                 Key={
                     'Address': candidate['Address']
                 },
@@ -187,16 +208,27 @@ class DynamoDBPipeline:
         return item
 
     def close_spider(self,spider):
-        for address in self.previous_addresses:
-            self.table.update_item(
+        update = [address for address, status in self.previous_addresses.items() if status != 'off-market']
+        print('Closing Spider - marking {} addresses as off-market'.format(len(update)))
+
+        session = boto3.Session(region_name=self.region)
+        credentials = session.get_credentials()
+        dynamodb = session.resource('dynamodb')
+        table = dynamodb.Table(self.dynamodb_table)
+
+
+        for address in update:
+            print('  ***** Off-Market -> {}  *****'.format(address))
+            table.update_item(
                 Key={
                         'Address': address,
                     },
-                UpdateExpression="set #s = :a",
+                UpdateExpression="set #s = :a, closed = :b",
                 ExpressionAttributeNames={
                     '#s':'status'
                 },
                 ExpressionAttributeValues={
-                        ':a': "off-market"
+                       ':a': "off-market",
+                        ':b': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                     }
             )

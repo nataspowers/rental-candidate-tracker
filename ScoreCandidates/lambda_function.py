@@ -13,8 +13,10 @@ print('Loading function')
 missing_property_types = []
 missing_restaurant_cat_types = []
 missing_attributes = []
+missing_neighborhoods = {}
 
 crime_violent_nonviolent_ratio = 5
+no_neighborhood_score = 5
 
 
 def lambda_handler(event, context):
@@ -40,6 +42,7 @@ def lambda_handler(event, context):
     print_missing_property_types(items)
     print_missing_attributes(items)
     print_missing_rest_cats(items)
+    print_missing_neighborhoods(items)
 
     for person, weight in weights.items():
 
@@ -55,7 +58,7 @@ def lambda_handler(event, context):
             if not person in item:
                 item[person] = {}
             item[person]['score'] = score_item(item, weight, stats, person, items)
-            item[person]['total'] = sum(i['score'] for i in item[person]['score'].values())
+            item[person]['total'] = sum(i['score'] for i in item[person]['score'].values() if 'score' in i.keys())
             #print('Item {} scores {}'.format(item['Address'], json.dumps(item['score'], indent=2, cls=DecimalEncoder)))
         print('scored items in {}'.format(datetime.now() - start))
 
@@ -81,42 +84,45 @@ def lambda_handler(event, context):
 def score_item(item, weight, stats, person, items):
     start = datetime.now()
     s = {}
-    for key, rank in weight.items():
+    for key, w in weight.items():
         if not key in stats:
             print('Missing stat for key {} for item {}'.format(key, item['Address']))
             break
-        missing_value = stats[key]['avg']
+        missing_value = stats[key]['avg'] if key not in missing_okay else 0
         val = get_val(key, item, person)
         reverse = key in lower_better_types
         val_list = []
         [val_list.append(get_val(key, i, person)) for i in items if get_val(key, i, person) is not None]
-        val_list.sort(reverse=not reverse)
-        rank_val = {
-            'rank' : int(val_list.index(val) if val is not None else int(len(val_list)/2)),
-            'count' : len(val_list),
-            'stats' : {
+        val_list.sort(reverse=(not reverse))
+        s[key] = {
+            'val' : val,
+            'score' : score_normal(val, missing_value, w, stats[key]['max'], stats[key]['min'], reverse=reverse),
+            'weight' : w,
+            'rank' : {
+                'rank' : int(val_list.index(val) if val is not None else int(len(val_list)/2)) + 1,
+                'count' : stats[key]['count']
+            }
+        }
+        # Person all has no weighting - so saving total metrics there only. Value can differ from person to person for some types (attributes, restaurant categories), so saving value under person
+        if person == 'all':
+            s[key]['stats'] = {
                 'min' : stats[key]['min'],
                 'avg' : round(stats[key]['avg']),
                 'max' : stats[key]['max']
             }
-        }
-        s[key] = {
-            'score' : score_normal(val, missing_value, rank, stats[key]['max'], stats[key]['min'], reverse=reverse),
-            'value' : val,
-            'weight' : rank,
-            'rank' : rank_val
-            }
+
     print('For {}, scored item {} in {}'.format(person, item['Address'], datetime.now() - start))
+    #print('returning score - {}'.format(s))
     return s
 
-def score_normal(value, missing_value, rank, old_max, old_min, reverse=False):
+def score_normal(value, missing_value, weight, old_max, old_min, reverse=False):
     val = value if bool(value) else missing_value
-    #print('Calculating score using {} from range ({},{}) to range (0,10) with rank {}'.format(val, old_min, old_max, rank))
-    score = map_range(val,old_max,old_min,10,1)
+    #print('Calculating score using {} from range ({},{}) to range (0,10) with weight {}'.format(val, old_min, old_max, weight))
+    score = map_range(val, old_max, old_min, 10, 1)
     if reverse:
-        return (11 - score) * rank
+        return (11 - score) * weight
     else:
-        return score * rank
+        return score * weight
 
 def generate_stats(items, person):
     stats = {}
@@ -175,7 +181,7 @@ def map_range(value, old_max, old_min, new_max, new_min):
     old_span = old_span if old_span != 0 else 1
 
     scaled = float(float(value) - old_min) / float(old_span)
-    return new_min + (scaled * new_span)
+    return new_min + (scaled * new_span) if value != 0 else 0
 
 def get_val(key, item, person=None):
     #print('Getting value {}'.format(key))
@@ -190,18 +196,23 @@ def get_val(key, item, person=None):
         #if val is not None and val > 4:
             #print('found {} with ppsf over 3 = {}'.format(item['Address'], val))
     elif key == 'area':
-        val = item.get('details',{}).get('area',None)
+        val = override(item.get('details',{}).get('area',None),item.get('override',{}).get('details',{}).get('area',None))
         if isinstance(val,str) and '-' in val:
             val = int((val.split('-',1)[1]).strip()) # take the larger end if area is a range
-        if val is not None and val > 10000:
+        if val is not None and int(val) > 10000:
             #print('found {} with area over 10000 = {}'.format(item['Address'], val))
-            val = val / 10
+            val = int(val) / 10
+        elif val:
+            val = int(val)
     elif key == 'rent':
-        val = item.get('price',{}).get('rent',None)
+        val = override(item.get('price',{}).get('rent',None),item.get('override',{}).get('price',{}).get('rent',None))
         if isinstance(val,str) and '-' in val:
             val = int((val.split('-',1)[1]).strip()) # take the larger end if rent is a range
+        elif val:
+            val = int(val)
     elif key == 'property_type':
-        pt = item.get('details',{}).get(key,False)
+        #print('{} get property_type {}'.format(item['Address'],item.get('details',{}).get('property_type',False)))
+        pt = override(item.get('details',{}).get('property_type',False),item.get('override',{}).get('details',{}).get('property_type',False))
         if not pt:
             return None
         val = property_type.get(pt, False)
@@ -212,11 +223,11 @@ def get_val(key, item, person=None):
         attrs = item.get('details',{}).get('attributes',False)
         val = get_attributes_val(attrs, person) if attrs else None
     elif key == 'deposit':
-        val = item.get('price',{}).get('deposit',None)
+        val = override(item.get('price',{}).get('deposit',None),item.get('override',{}).get('price',{}).get('deposit',None))
         val = val if val is not None and val > 1000 else None
     elif key == 'year_built':
         val = item.get('details',{}).get('year_built',False)
-        val = 2020 - val if val else None
+        val = 2021 - val if val else None
     elif key == 'crime':
         val = get_crime_val(item.get('crime',None))
     elif get_place_type(key) is not None:
@@ -224,10 +235,12 @@ def get_val(key, item, person=None):
     elif key in commute_types:
         val = get_commute_val(key, item.get('commute',None))
     elif key in observation_types:
-        val = get_observation_val(key, item.get('observations', None))
+        val = get_observation_val(key, item.get('observations', None), person)
+    elif key == 'neighborhood':
+        val = get_neighborhood_val(override(item.get('neighborhood',{}).get('name',None),item.get('override',{}).get('neighborhood',{}).get('name',None)))
     else:
         if key in item:
-            val = item[key]
+            val = override(item[key], item.get('override',{}).get(key,None))
         else:
             val = walk_item(key, item)
 
@@ -261,6 +274,12 @@ def walk_item(key, node):
     #print('---> returning {}'.format(val))
     return val
 
+def override(stored, overrided):
+    if overrided is None or not overrided:
+        return stored
+    else:
+        return overrided
+
 def print_missing_property_types(items):
     for item in items:
         pt = item.get('details',{}).get('property_type',None)
@@ -286,14 +305,29 @@ def print_missing_rest_cats(items):
     if missing_restaurant_cat_types:
         print ('Missing restaurant categories: {}'.format(missing_restaurant_cat_types))
 
+def print_missing_neighborhoods(items):
+    for item in items:
+        neighborhood = item.get('neighborhood',{}).get('name',None)
+        if neighborhood and neighborhood not in neighborhood_scores and neighborhood not in missing_neighborhoods:
+                missing_neighborhoods[neighborhood] = item.get('neighborhood',{}).get('url', '?')
+    if missing_neighborhoods:
+        print ('Missing neighborhood:')
+        for k, v in missing_neighborhoods.items():
+            print ('{} {}'.format(k, v))
+
 def get_categories(node):
     if isinstance(node,list):
-        places = [i.get('places',{}) for i in node]
-    else:
-        places = [node.get('places',{})]
+        places = [i.get('places',{}) for i in node if i is not None and i.get('places',None) is not None]
+    elif isinstance(node, dict):
+        places = list(node.get('places',{})) if node.get('places',None) is not None else None
+
+    for p in places:
+        if p is None:
+            print('node has None place - {}'.format(node))
+
     categories = [list(p.get('restaurant',{}).get('categories-stats',{}))
                         for p in places
-                        if p.get('restaurant',{}).get('categories-stats',None) is not None]
+                        if p is not None and p.get('restaurant',{}).get('categories-stats',None) is not None]
     return unique_flatten(categories)
 
 
@@ -379,23 +413,31 @@ def get_airport(airport,travel):
             return float(v.get('duration',{}).get('value',0))
     return 0
 
-def get_observation_val(obs_type, observations):
+def get_observation_val(obs_type, observations, person):
     if observations is None:
         return None
 
-    joe = observations.get('joe',None)
-    jen = observations.get('jen',None)
+    joe_val = observations.get('joe',{}).get(obs_type,None)
+    joe_val = None if joe_val is None or joe_val == '?' else int(joe_val)
 
-    if joe is None and jen is None:
+    jen_val = observations.get('jen',{}).get(obs_type,None)
+    jen_val = None if jen_val is None or jen_val == '?' else int(jen_val)
+
+    if joe_val is None and jen_val is None:
         return None
 
-    if joe is None:
-        return jen[obs_type]
+    if joe_val is None:
+        return jen_val
 
-    if jen is None:
-        return joe[obs_type]
+    if jen_val is None:
+        return joe_val
 
-    return float(joe[obs_type] + jen[obs_type]) / 2
+    if person == 'all':
+        return float(joe_val + jen_val) / 2
+    elif person == 'joe':
+        return joe_val
+    else:
+        return jen_val
 
 def get_place_val(place_type, place):
     #print('in get_place_val key={}, place={}'.format(place_type,place))
@@ -516,6 +558,12 @@ def get_bart_val(key, place):
         else:
             return None
 
+def get_neighborhood_val(key):
+    if key in neighborhood_scores:
+        return neighborhood_scores[key]
+    else:
+        return no_neighborhood_score
+
 class DecimalEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, Decimal):
@@ -532,13 +580,14 @@ def update_table (items, max_score):
         score = {p: {'score_detail': i[p]['score'],
                      'total': i[p]['total'],
                      'pct': (i[p]['total'] / max_score[p]) * 100}
-                for p in weights.keys() if p != 'all'}
+                for p in weights.keys() }
 
         response = table.update_item(
                     Key={'Address': i['Address']},
-                    UpdateExpression='set score = :val1',
+                    UpdateExpression='set score = :val1, scored_at = :dt',
                     ExpressionAttributeValues={
-                        ':val1': json.loads(json.dumps(score, cls=DecimalEncoder), parse_float=Decimal)
+                        ':val1': json.loads(json.dumps(score, cls=DecimalEncoder), parse_float=Decimal),
+                        ':dt' : datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                         }
                 )
     print('updated {} items in {}'.format(len(items), datetime.now() - start))

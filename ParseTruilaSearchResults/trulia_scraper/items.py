@@ -20,9 +20,11 @@ class TruliaItem(scrapy.Item):
     attribute_names = scrapy.Field()
     attribute_values = scrapy.Field()
     telephone = scrapy.Field()
+    tags = scrapy.Field()
 
     # Items generated from further parsing of 'raw' scraped data
     section8 = scrapy.Field()
+    furnished = scrapy.Field()
     pets = scrapy.Field()
     deposit = scrapy.Field()
     year_built = scrapy.Field()
@@ -46,6 +48,7 @@ class TruliaItemLoader(ItemLoader):
     heating_out = Compose(remove_empty)
     floors_out = Compose(remove_empty)
     city_state_out = Join(', ')
+    tags_out = Compose(remove_empty)
 
     attribute_values_out = Compose(remove_empty)
     attribute_names_out = Compose(remove_empty)

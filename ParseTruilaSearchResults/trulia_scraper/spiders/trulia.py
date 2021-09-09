@@ -18,7 +18,7 @@ class TruliaSpider(scrapy.Spider):
     custom_settings = {'FEED_URI': '/tmp/data/data_for_rent_%(time)s.jl',
                        'FEED_FORMAT': 'jsonlines'}
 
-    def __init__(self, state='CA', cities=['Oakland','Alameda','Berkeley'], *args, **kwargs):
+    def __init__(self, state='CA', cities=['Oakland','Alameda','Berkeley','Emeryville'], *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.state = state
         self.cities = cities
@@ -37,7 +37,7 @@ class TruliaSpider(scrapy.Spider):
 
     @staticmethod
     def get_number_of_pages_to_scrape(response):
-        pagination = response.xpath('//*[@id="resultsColumn"]/div[2]/div/text()')
+        pagination = response.xpath('//*[@data-testid="pagination-caption"]/text()')
         if pagination.re(r'1-30 of ([\d,]+) Results'):
             number_of_results = int(pagination.re(r'1-30 of ([\d,]+) Results')[0])
             return math.ceil(number_of_results/30)
@@ -69,15 +69,25 @@ class TruliaSpider(scrapy.Spider):
         item_loader.add_xpath('neighborhood_url', '//*[@data-testid="neighborhood-link"]/@href')
 
         fact_list = item_loader.nested_xpath('//*[@data-testid="facts-list"]')
-        fact_list.add_xpath('bedrooms', xpath='.//*[@data-testid="home-summary-size-bedrooms"]/div/div[2]/text()', re=r'(\d+) (?:Beds|Bed|beds|bed)$')
-        fact_list.add_xpath('bathrooms', xpath='.//*[@data-testid="home-summary-size-bathrooms"]/div/div[2]/text()', re=r'(\d+\.?[0-9]*) (?:Baths|Bath|baths|bath)$')
-        fact_list.add_xpath('area', xpath='.//*[@data-testid="home-summary-size-floorspace"]/div/div[2]/text()', re=r'([\d, -]+)')
+        fact_list.add_xpath('bedrooms', xpath='.//*[@data-testid="bed"]/div/div[2]/text()', re=r'(\d+) (?:Beds|Bed|beds|bed)$')
+        fact_list.add_xpath('bathrooms', xpath='.//*[@data-testid="bath"]/div/div[2]/text()', re=r'(\d+\.?[0-9]*) (?:Baths|Bath|baths|bath)$')
+        fact_list.add_xpath('area', xpath='.//*[@data-testid="floor"]/div/div[2]/text()', re=r'([\d, -]+)')
 
         item_loader.add_xpath('telephone', '//*[@data-testid="home-description-text-description-phone-number"]/div/div[2]/text()')
         item_loader.add_xpath('description', '//*[@data-testid="home-description-text-description-text"]/text()')
 
-        features = item_loader.nested_xpath('//*[@data-testid="home-features"]')
-        features.add_xpath('features', xpath='.//li/text()')
+        item_loader.add_xpath('tags','//*[@data-testid="hero-image-property-tag-1"]/span/text()')
+        item_loader.add_xpath('tags','//*[@data-testid="hero-image-property-tag-2"]/span/text()')
+        item_loader.add_xpath('tags','//*[@data-testid="hero-image-property-tag-3"]/span/text()')
+        item_loader.add_xpath('tags','//*[@data-testid="hero-image-property-tag-4"]/span/text()')
+        item_loader.add_xpath('tags','//*[@data-testid="hero-image-property-tag-5"]/span/text()')
+
+        features = item_loader.nested_xpath('//*[@data-testid="structured-amenities-table-category"]')
+        #features without a sub-header are 1 div below /table/tbody/tr/td
+        features.add_xpath('features', xpath='.//table/tbody/tr/td/div/li/text()')
+        #features with a sub-header are 2 divs below /table/tbody/tr/td
+        #should we try to get the sub-header and associate it to the value? it would be in .//table/tbody/tr/td/div/div/text()
+        features.add_xpath('features', xpath='.//table/tbody/tr/td/div[2]/li/text()')
 
         item_loader.add_xpath('attribute_values', '//*[@data-testid="wls-attribute"]/div/div/div/div/div/div[2]/div/text()', re=r'\d+')
         item_loader.add_xpath('attribute_names', '//*[@data-testid="wls-attribute"]/div/div/div[2]/div/div[2]/div/text()')
@@ -88,15 +98,20 @@ class TruliaSpider(scrapy.Spider):
     def post_process(item):
         '''Add any additional data to an item after loading it'''
         s8 = ['section 8', 'section8', 'GoSection8.com']
-        np = ['no pets', 'pets not allowed', 'no pets allowed','pets are not allowed']
-        p = ['cats','small dogs', 'pet considered','pets considered','pets allowed','pets ok','pets okay','pets negotiable']
+        np = ['no pet', 'no pets', 'pets not allowed', 'no pets allowed','pets are not allowed']
+        p = ['dog', 'cat', 'cats','small dogs', 'pet considered','pets considered','pets allowed','pets ok','pets okay','pets negotiable']
+
+        item['features'] = list(dict.fromkeys(item.get('features',[]))) #remove list duplicates
         features = [str.casefold(f) for f in item.get('features',[])]
         description = [str.casefold(d) for d in item.get('description',[])]
         f_d = features + description
+        tags = item.get('tags',[])
 
         section8 = [item for s8_phrase in s8 for item in f_d if s8_phrase in item]
-
         item['section8'] = False if not section8 else True
+
+        if 'INCOME RESTRICTED' in tags or 'SENIOR HOUSING' in tags:
+            item['section8'] = True
 
         no_pets = [item for np_phrase in np for item in f_d if np_phrase in item]
         yes_pets = [item for p_phrase in p for item in f_d if p_phrase in item]
@@ -107,6 +122,12 @@ class TruliaSpider(scrapy.Spider):
             item['pets'] = True
         else:
             item['pets'] = None
+
+        if 'PET FRIENDLY' in tags:
+            item['pets'] = True
+
+        if 'FURNISHED' in tags:
+            item['furnished'] = True
 
         deposit = ' '.join([i for i in f_d if 'deposit' in i])
         deposit = [i for i in deposit.split() if i.replace('$','').replace(',','').isdigit()]

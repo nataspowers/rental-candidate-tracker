@@ -72,6 +72,7 @@ def get_walking_time(start, destination):
     @start: location to calculate walking distance from
     """
     now = datetime.now()
+    print('Getting walking distance matrix from {} to {}'.format(start, destination))
     distance = get_distance_matrix(origins=start,
                                     destinations=destination,
                                     mode="walking",
@@ -114,21 +115,47 @@ def get_airport_commute_transit(start):
 
 def get_distance_matrix(origins, destinations, mode, units, departure_time=None, arrival_time=None,
                         transit_routing_preference=None):
-
-
-    max_batch = min(25,100/len(destinations)) #25 origins or destinations, max 100 returned items total
-    #print('{} destinations, max batch set to {}'.format(len(destinations), max_batch))
+    #setup output dict
     distances = {
         'destination_addresses': [],
         'origin_addresses': [],
         'rows': []
     }
-    sls = 0
-    while sls < len(origins):
-        sle = min(sls+max_batch, len(origins)+1)
-        batch = origins[sls:sle]
 
-        #print('slice {} to {} for batch of {} - origins={}'.format(sls,sle,len(batch),len(origins)))
+    #do we have a list of destinations, or just one destination - an destination can be a geo (list, tuple or dict), or a string address
+    if all(isinstance(el, list) for el in destinations) or \
+       all(isinstance(el, tuple) for el in destinations) or \
+       all(isinstance(el, dict) for el in destinations) or \
+       all(isinstance(el, str) for el in destinations):
+        dest_count = len(destinations)
+    else:
+        dest_count = 1
+
+    max_batch = min(25,100/dest_count) #25 origins or destinations, max 100 returned items total
+    #print('{} destination{}, max batch set to {}'.format(dest_count, 's' if dest_count > 1 else '', max_batch))
+
+    #do we have a list of origins, or just one origin - an origin can be a geo (list, tuple or dict), or a string address
+    if all(isinstance(el, list) for el in origins) or \
+       all(isinstance(el, tuple) for el in origins) or \
+       all(isinstance(el, dict) for el in origins) or \
+       all(isinstance(el, str) for el in origins):
+        origin_count = len(origins)
+    else:
+        origin_count = 1
+
+    #print('{} origin{}'.format(origin_count, 's' if origin_count > 1 else ''))
+
+    sls = 0
+    while sls < origin_count:
+        if origin_count > 1:
+            sle = min(sls+max_batch, origin_count+1)
+            batch = origins[sls:sle]
+            #print('slice {} to {} for batch of {} - origins={}'.format(sls,sle,len(batch),len(origins)))
+        else:
+            sle = 1
+            batch = origins
+
+        #print('calling distance matrix with origin batch {} - destination batch {}'.format(batch,destinations))
         dm = gmaps.distance_matrix(origins=batch,
                                     destinations=destinations,
                                     mode=mode,

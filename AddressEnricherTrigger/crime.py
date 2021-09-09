@@ -26,6 +26,7 @@ start_time = datetime.now()
 crime_eval_period = 90
 one_week_seconds = timedelta(weeks=1).total_seconds()
 crime_eval_period_seconds = timedelta(days=crime_eval_period).total_seconds()
+crime_eval_distance = half_mile
 
 def get_crime(address, geo, api='mixed'):
     #print('get_crime ({},{})'.format(address, geo))
@@ -109,8 +110,8 @@ def get_crime_crimeometer(geo):
 
 
 def filter_and_score_crime(start,crimes,location):
-    nv = 0
-    v = 0
+    nv, nv_raw = 0, 0
+    v, v_raw = 0, 0
     geo_sub_column = True
     latitude_column = 'latitude'
     longitude_column = 'longitude'
@@ -165,38 +166,45 @@ def filter_and_score_crime(start,crimes,location):
             print('could not convert crime time - {}'.format(crime[datetime_column]))
             break
 
-        if crime[crime_type_column] in non_violent_crimes:
-            nv += grade_crime_time(crime_time)
-            nv += grade_crime_distance(start, crime_geo, crime_address)
-        elif crime[crime_type_column] in violent_crimes:
-            v += grade_crime_time(crime_time)
-            v += grade_crime_distance(start, crime_geo, crime_address)
-        elif crime[crime_type_column] == 'N/A':
-            print('found a crimeometer crime with code N/A - {}'.format(json.dumps(crimes, indent=2)))
-    print('pulled and scored crime for {} in {}'.format(start, datetime.now() - start_time))
+        time = (now - crime_time).total_seconds()
+        distance = get_crime_distance(start, crime_geo, crime_address)
+
+        if time <= crime_eval_period_seconds and distance <= crime_eval_distance:
+            if crime[crime_type_column] in non_violent_crimes:
+                nv_raw += 1
+                nv += grade_crime_time(time)
+                nv += grade_crime_distance(distance)
+            elif crime[crime_type_column] in violent_crimes:
+                v_raw += 1
+                v += grade_crime_time(time)
+                v += grade_crime_distance(distance)
+            elif crime[crime_type_column] == 'N/A':
+                print('found a crimeometer crime with code N/A - {}'.format(json.dumps(crimes, indent=2)))
+    print('Pulled and scored crime for {} in {}'.format(start, datetime.now() - start_time))
+    print('Raw crime counts - violent {}, non-violent {}'.format(v_raw, nv_raw))
     return {'violent':v, 'non-violent':nv}
 
-def grade_crime_time(ts):
-    time = (now - ts).total_seconds()
-    if time < one_week_seconds:
-        time = one_week_seconds
+def grade_crime_time(sec):
+    if sec < one_week_seconds:
+        sec = one_week_seconds
 
-    return map_range(time, one_week_seconds, crime_eval_period_seconds, 0, 0.5)
+    return map_range(sec, one_week_seconds, crime_eval_period_seconds, 0, 0.5)
 
-def grade_crime_distance(coord_1, coord_2, address):
+
+def get_crime_distance(coord_1, coord_2, address):
     if coord_2:
         d = distance.distance(coord_1, coord_2).meters
     else:
         geo = geocode(address=address, api="mapquest")['geo']
         d = distance.distance(coord_1, geo).meters
+    return d
+
+def grade_crime_distance(d):
 
     if d < (quarter_mile / 2):
         d = (quarter_mile / 2)
 
-    if d <= half_mile: #ignore crime more than 0.5 mile away
-        return 0.5 - map_range(d, (quarter_mile / 2), half_mile, 0, 0.5)
-    else:
-        return 0
+    return 0.5 - map_range(d, (quarter_mile / 2), crime_eval_distance, 0, 0.5)
 
 def load_oakland_crime(api='mapquest', config=None):
     """

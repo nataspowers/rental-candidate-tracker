@@ -32,6 +32,7 @@ violent_crimes = os.environ['violent_crimes'].split(";")
 oakland_police_beats = os.environ['oakland_police_beats'].split(",")
 
 crime_eval_period = 90
+crime_purge_period = 150
 
 
 def get_latest_saved_crime():
@@ -75,7 +76,6 @@ def load_oakland_crime(start):
     return crimes
 
 def remove_existing_crimes(crimes):
-    from boto3.dynamodb.conditions import Key
 
     dynamodb = boto3.resource('dynamodb')
     table = dynamodb.Table('Crimes')
@@ -163,6 +163,52 @@ def save_crimes(crimes):
     print('Saved {} crimes in {}'.format(len(crimes), datetime.now() - start))
     return
 
+def delete_old_crimes():
+
+    dynamodb = boto3.resource('dynamodb')
+    table = dynamodb.Table('Crimes')
+
+    scan_kwargs = {
+        'FilterExpression': Key('city').eq('Oakland'),
+        'ProjectionExpression': 'casenumber, #s1',
+        'ExpressionAttributeNames': {'#s1':'datetime'}
+    }
+    done = False
+    start_key = None
+    old_crimes = []
+
+    start = datetime.now()
+    delete_before = (datetime.now() - timedelta(days=crime_purge_period)).timestamp()
+
+    print('looking for crimes before {}'.format(delete_before))
+
+    while not done:
+        if start_key:
+            scan_kwargs['ExclusiveStartKey'] = start_key
+        response = table.scan(**scan_kwargs)
+        if not response.get('Count',0) == 0:
+            old_crimes += [{'casenumber':item['casenumber'],'datetime':item['datetime']} for item in response['Items'] if item['datetime'] < delete_before]
+            count = len(response['Items'])
+            print('first returned crime datetime for batch of size {} is {}'.format(count, response['Items'][0]['datetime']))
+            print('last returned crime datetime for batch of size {} is {}'.format(count, response['Items'][count-1]['datetime']))
+            if response['Items'][0]['datetime'] > delete_before:
+                done = True
+        start_key = response.get('LastEvaluatedKey', None)
+        done = start_key is None
+
+    print('Found {} old crimes to delete in {}'.format(len(old_crimes), datetime.now() - start))
+    if len(old_crimes) > 0:
+        start = datetime.now()
+        for crime in old_crimes:
+            table.delete_item(
+                Key = {'city': 'Oakland', 'datetime': crime['datetime']},
+                ConditionExpression="casenumber = :val",
+                ExpressionAttributeValues={
+                    ":val": crime['casenumber']
+                }
+            )
+        print('Deleted {} old crimes in {}'.format(len(old_crimes), datetime.now() - start))
+
 if __name__ == '__main__':
 
 
@@ -172,3 +218,7 @@ if __name__ == '__main__':
         if new_crimes:
             new_crimes = geocode_crimes(new_crimes)
             save_crimes(new_crimes)
+    delete_old_crimes()
+
+
+

@@ -22,7 +22,7 @@ REGION = 'us-east-2'
 #USER_AGENT = 'trulia_scraper (+http://www.yourdomain.com)'
 
 # Obey robots.txt rules
-ROBOTSTXT_OBEY = True
+ROBOTSTXT_OBEY = False
 
 # Configure maximum concurrent requests performed by Scrapy (default: 16)
 #CONCURRENT_REQUESTS = 32
@@ -71,7 +71,8 @@ ITEM_PIPELINES = {
     'trulia_scraper.pipelines.DuplicatesPipeline': 100,
     'trulia_scraper.pipelines.Section8FilterPipeline': 200,
     'trulia_scraper.pipelines.NoPetFilterPipeline': 300,
-    'trulia_scraper.pipelines.DynamoDBPipeline': 400,
+    'trulia_scraper.pipelines.FurnishedFilterPipeline': 400,
+    'trulia_scraper.pipelines.DynamoDBPipeline': 500,
 }
 
 # Enable and configure the AutoThrottle extension (disabled by default)

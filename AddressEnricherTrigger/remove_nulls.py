@@ -25,8 +25,17 @@ for i in items:
         if v is None:
             update_expr = 'remove {}'.format(k)
             response = table.update_item(
-                        Key={'Address': i['Address']},
-                        UpdateExpression=update_expr,
-                    )
-            print('removed {} from {}'.format(k, i['Address']))
+                            Key={'Address': i['Address']},
+                                UpdateExpression=update_expr,
+                            )
+            print('{} from {}'.format(update_expr, i['Address']))
+        elif isinstance(v, dict):
+            for k1, v1 in v.items():
+                if v1 is None:
+                    update_expr = 'remove {}.{}'.format(k, k1)
+                    response = table.update_item(
+                                Key={'Address': i['Address']},
+                                UpdateExpression=update_expr,
+                            )
+                    print('{} from {}'.format(update_expr, i['Address']))
 
